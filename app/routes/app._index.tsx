@@ -133,27 +133,6 @@ export default function Dashboard() {
     <Page>
       <TitleBar title="Arrively — Estimated Delivery Date" />
       <Layout>
-        {/* Embed-off warning banner — disappears automatically when embed is toggled on */}
-        {!embedEnabled && (
-          <Layout.Section>
-            <Banner
-              title="Arrively is not showing on your storefront"
-              tone="warning"
-              action={{
-                content: "Enable in Theme Editor",
-                url: "shopify://admin/themes/current/editor?context=apps",
-                target: "_top" as const,
-              }}
-            >
-              <Text as="p" variant="bodyMd">
-                The Arrively app embed is turned off. Go to{" "}
-                <strong>Theme Editor → App Embeds</strong> and toggle Arrively
-                on. This page will update automatically once it&apos;s enabled.
-              </Text>
-            </Banner>
-          </Layout.Section>
-        )}
-
         {!isConfigured && (
           <Layout.Section>
             <Banner
