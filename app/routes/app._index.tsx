@@ -249,7 +249,7 @@ export default function Dashboard() {
                       : "In the theme editor, go to App Embeds and toggle Arrively — Delivery Date on. This page updates automatically."}
                   </Text>
                   <Button
-                    url="shopify://admin/themes/current/editor?context=apps"
+                    url="shopify://admin/themes/current/editor?context=apps&activateAppId=50d24c28388da4712f8c9e5618af4095/delivery-date"
                     variant={embedEnabled ? "plain" : "primary"}
                     size="slim"
                     target="_blank"
