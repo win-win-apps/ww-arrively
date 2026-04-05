@@ -60,21 +60,24 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const themeId = mainTheme?.legacyResourceId;
 
     if (themeId && session.accessToken) {
-      const assetResponse = await fetch(
-        `https://${session.shop}/admin/api/2026-04/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`,
-        {
-          headers: {
-            "X-Shopify-Access-Token": session.accessToken,
-          },
-        }
+      // URLSearchParams encodes brackets correctly: asset[key] → asset%5Bkey%5D
+      // Literal brackets in the URL fail silently against the Shopify REST API
+      const assetUrl = new URL(
+        `https://${session.shop}/admin/api/2026-04/themes/${themeId}/assets.json`
       );
+      assetUrl.searchParams.set("asset[key]", "config/settings_data.json");
+
+      const assetResponse = await fetch(assetUrl.toString(), {
+        headers: {
+          "X-Shopify-Access-Token": session.accessToken,
+        },
+      });
 
       if (assetResponse.ok) {
         const assetData = await assetResponse.json();
         const settingsJson = JSON.parse(assetData.asset?.value ?? "{}");
 
-        // settings_data.json structure: { current: { blocks: {...} } }
-        // or legacy: { current: "PresetName", presets: { PresetName: { blocks: {...} } } }
+        // settings_data.json: { current: { blocks: { "numericKey": { type: "shopify://apps/arrively/...", disabled: false } } } }
         let blocks: Record<string, unknown> = {};
         if (typeof settingsJson.current === "object" && settingsJson.current !== null) {
           blocks = (settingsJson.current as Record<string, unknown>).blocks as Record<string, unknown> ?? {};
@@ -84,21 +87,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           blocks = (preset as Record<string, unknown>).blocks as Record<string, unknown> ?? {};
         }
 
-        // Check both block keys (shopify://apps/[handle]/blocks/...) and block type values
-        // An embed is "on" if it exists in blocks AND is not explicitly disabled
-        embedEnabled = Object.entries(blocks).some(([key, block]) => {
-          const keyMatch = key.toLowerCase().includes("arrively");
+        // Block keys are numeric strings; the app handle lives in the `type` value.
+        // type: "shopify://apps/arrively/blocks/delivery-date/UUID"
+        embedEnabled = Object.values(blocks).some((block) => {
           const b = block as Record<string, unknown> | null;
-          const typeMatch =
+          return (
             typeof b?.type === "string" &&
-            b.type.toLowerCase().includes("arrively");
-          const isMatch = keyMatch || typeMatch;
-          return isMatch && b?.disabled !== true;
+            b.type.toLowerCase().includes("arrively") &&
+            b.disabled !== true
+          );
         });
       }
     }
   } catch (_e) {
-    // If the check throws, leave embedEnabled as false
     embedEnabled = false;
   }
 
@@ -110,20 +111,26 @@ export default function Dashboard() {
   const { revalidate, state: revalidateState } = useRevalidator();
   const isChecking = revalidateState === "loading";
 
-  // Re-check embed status whenever the merchant returns to this tab
-  // (e.g. after toggling the embed in Theme Editor)
+  // Re-check embed status whenever the merchant returns to this tab.
+  // Uses three mechanisms because Shopify embeds run in an iframe where
+  // window.focus is unreliable:
+  // 1. visibilitychange — fires when parent tab is shown/hidden (most reliable)
+  // 2. window.focus — backup for window-level focus events
+  // 3. 8-second polling while visible — catches any missed events
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") revalidate();
+    const revalidateIfVisible = () => {
+      if (document.visibilityState !== "hidden") revalidate();
     };
-    const handleFocus = () => revalidate();
 
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", revalidateIfVisible);
+    window.addEventListener("focus", revalidateIfVisible);
+
+    const poll = setInterval(revalidateIfVisible, 8000);
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", revalidateIfVisible);
+      window.removeEventListener("focus", revalidateIfVisible);
+      clearInterval(poll);
     };
   }, [revalidate]);
 
