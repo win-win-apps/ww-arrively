@@ -1,6 +1,7 @@
 import { json } from "@remix-run/node";
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useRevalidator } from "@remix-run/react";
+import { useEffect } from "react";
 import {
   Page,
   Layout,
@@ -14,6 +15,7 @@ import {
   Badge,
   Divider,
   Box,
+  Spinner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -38,7 +40,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const config = configField ? JSON.parse(configField.value) : null;
 
   // Check if app embed is enabled in the main theme
-  let embedEnabled = true; // Default true — don't show false alarm if check fails
+  let embedEnabled = true; // Default true — don't show a false alarm if check fails
   try {
     const themeResponse = await admin.graphql(`
       query {
@@ -90,11 +92,33 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function Dashboard() {
   const { isConfigured, embedEnabled } = useLoaderData<typeof loader>();
+  const { revalidate, state: revalidateState } = useRevalidator();
+  const isChecking = revalidateState === "loading";
+
+  // Re-check embed status whenever the merchant returns to this tab
+  // (e.g. after toggling the embed in Theme Editor)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") revalidate();
+    };
+    const handleFocus = () => revalidate();
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [revalidate]);
+
+  const allComplete = isConfigured && embedEnabled;
 
   return (
     <Page>
       <TitleBar title="Arrively — Estimated Delivery Date" />
       <Layout>
+        {/* Embed-off warning banner — disappears automatically when embed is toggled on */}
         {!embedEnabled && (
           <Layout.Section>
             <Banner
@@ -109,7 +133,7 @@ export default function Dashboard() {
               <Text as="p" variant="bodyMd">
                 The Arrively app embed is turned off. Go to{" "}
                 <strong>Theme Editor → App Embeds</strong> and toggle Arrively
-                on to show delivery dates on your product pages.
+                on. This page will update automatically once it&apos;s enabled.
               </Text>
             </Banner>
           </Layout.Section>
@@ -135,25 +159,31 @@ export default function Dashboard() {
                 <Text as="h2" variant="headingMd">
                   Setup
                 </Text>
-                {isConfigured && embedEnabled ? (
-                  <Badge tone="success">Complete</Badge>
-                ) : (
-                  <Badge tone="attention">
-                    {[!isConfigured, !embedEnabled].filter(Boolean).length} step
-                    {[!isConfigured, !embedEnabled].filter(Boolean).length > 1
-                      ? "s"
-                      : ""}{" "}
-                    remaining
-                  </Badge>
-                )}
+                <InlineStack gap="200" blockAlign="center">
+                  {isChecking && <Spinner size="small" />}
+                  {allComplete ? (
+                    <Badge tone="success">Complete</Badge>
+                  ) : (
+                    <Badge tone="attention">
+                      {[!isConfigured, !embedEnabled].filter(Boolean).length}{" "}
+                      step
+                      {[!isConfigured, !embedEnabled].filter(Boolean).length > 1
+                        ? "s"
+                        : ""}{" "}
+                      remaining
+                    </Badge>
+                  )}
+                </InlineStack>
               </InlineStack>
 
               <Divider />
 
-              {/* Step 1 */}
+              {/* Step 1 — Settings configured */}
               <InlineStack gap="400" blockAlign="start" wrap={false}>
                 <Box
-                  background={isConfigured ? "bg-fill-success" : "bg-fill-brand"}
+                  background={
+                    isConfigured ? "bg-fill-success" : "bg-fill-brand"
+                  }
                   borderRadius="full"
                   padding="150"
                   minWidth="32px"
@@ -188,11 +218,11 @@ export default function Dashboard() {
 
               <Divider />
 
-              {/* Step 2 */}
+              {/* Step 2 — App embed enabled (live indicator) */}
               <InlineStack gap="400" blockAlign="start" wrap={false}>
                 <Box
                   background={
-                    embedEnabled ? "bg-fill-success" : "bg-fill-secondary"
+                    embedEnabled ? "bg-fill-success" : "bg-fill-caution"
                   }
                   borderRadius="full"
                   padding="150"
@@ -209,14 +239,20 @@ export default function Dashboard() {
                   </Text>
                 </Box>
                 <BlockStack gap="150">
-                  <Text as="p" variant="bodyMd" fontWeight="semibold">
-                    Enable Arrively in App Embeds
-                  </Text>
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text as="p" variant="bodyMd" fontWeight="semibold">
+                      Enable Arrively in App Embeds
+                    </Text>
+                    {embedEnabled ? (
+                      <Badge tone="success">On</Badge>
+                    ) : (
+                      <Badge tone="warning">Off</Badge>
+                    )}
+                  </InlineStack>
                   <Text as="p" variant="bodySm" tone="subdued">
-                    In the theme editor, go to{" "}
-                    <strong>App Embeds</strong> and toggle{" "}
-                    <strong>Arrively — Delivery Date</strong> on. Takes 10
-                    seconds, no theme code needed.
+                    {embedEnabled
+                      ? "Arrively is active and showing delivery dates on your product pages."
+                      : "In the theme editor, go to App Embeds and toggle Arrively — Delivery Date on. This page updates automatically."}
                   </Text>
                   <Button
                     url="shopify://admin/themes/current/editor?context=apps"
@@ -224,7 +260,9 @@ export default function Dashboard() {
                     size="slim"
                     target="_top"
                   >
-                    {embedEnabled ? "Manage App Embeds →" : "Open Theme Editor →"}
+                    {embedEnabled
+                      ? "Manage App Embeds →"
+                      : "Open Theme Editor →"}
                   </Button>
                 </BlockStack>
               </InlineStack>
