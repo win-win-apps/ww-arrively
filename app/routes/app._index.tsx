@@ -46,18 +46,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const themeResponse = await admin.graphql(`
       query {
         themes(first: 10) {
-          nodes { id legacyResourceId role }
+          nodes { id role }
         }
       }
     `);
     const themeData = await themeResponse.json();
-    const themes: Array<{ id: string; legacyResourceId: string; role: string }> =
+    const themes: Array<{ id: string; role: string }> =
       themeData.data?.themes?.nodes ?? [];
 
-    // Shopify may return role as "MAIN" or "main" depending on API version
-    const mainTheme =
-      themes.find((t) => t.role?.toUpperCase() === "MAIN") ?? themes[0];
-    const themeId = mainTheme?.legacyResourceId;
+    const mainTheme = themes.find((t) => t.role === "MAIN");
+    // id is a GID: "gid://shopify/OnlineStoreTheme/146328060124" — extract numeric part
+    const themeId = mainTheme?.id?.split("/").pop();
 
     if (themeId && session.accessToken) {
       // URLSearchParams encodes brackets correctly: asset[key] → asset%5Bkey%5D
