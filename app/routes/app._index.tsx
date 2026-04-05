@@ -40,18 +40,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const config = configField ? JSON.parse(configField.value) : null;
 
   // Check if app embed is enabled in the main theme
-  let embedEnabled = true; // Default true — don't show a false alarm if check fails
+  // Default false — safer to show "off" than a false "on"
+  let embedEnabled = false;
   try {
     const themeResponse = await admin.graphql(`
       query {
-        themes(first: 5) {
+        themes(first: 10) {
           nodes { id legacyResourceId role }
         }
       }
     `);
     const themeData = await themeResponse.json();
-    const themes = themeData.data?.themes?.nodes ?? [];
-    const mainTheme = themes.find((t: { role: string }) => t.role === "MAIN");
+    const themes: Array<{ id: string; legacyResourceId: string; role: string }> =
+      themeData.data?.themes?.nodes ?? [];
+
+    // Shopify may return role as "MAIN" or "main" depending on API version
+    const mainTheme =
+      themes.find((t) => t.role?.toUpperCase() === "MAIN") ?? themes[0];
     const themeId = mainTheme?.legacyResourceId;
 
     if (themeId && session.accessToken) {
@@ -67,24 +72,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       if (assetResponse.ok) {
         const assetData = await assetResponse.json();
         const settingsJson = JSON.parse(assetData.asset?.value ?? "{}");
-        const preset = settingsJson.current ?? {};
-        const blocks = preset.blocks ?? {};
 
-        // App embed blocks appear in current.blocks with a type containing the app handle
-        embedEnabled = Object.values(blocks).some((block: unknown) => {
-          if (typeof block !== "object" || block === null) return false;
-          const b = block as Record<string, unknown>;
-          return (
-            typeof b.type === "string" &&
-            b.type.includes("arrively") &&
-            b.disabled !== true
-          );
+        // settings_data.json structure: { current: { blocks: {...} } }
+        // or legacy: { current: "PresetName", presets: { PresetName: { blocks: {...} } } }
+        let blocks: Record<string, unknown> = {};
+        if (typeof settingsJson.current === "object" && settingsJson.current !== null) {
+          blocks = (settingsJson.current as Record<string, unknown>).blocks as Record<string, unknown> ?? {};
+        } else if (typeof settingsJson.current === "string") {
+          const presetName = settingsJson.current;
+          const preset = (settingsJson.presets ?? {})[presetName] ?? {};
+          blocks = (preset as Record<string, unknown>).blocks as Record<string, unknown> ?? {};
+        }
+
+        // Check both block keys (shopify://apps/[handle]/blocks/...) and block type values
+        // An embed is "on" if it exists in blocks AND is not explicitly disabled
+        embedEnabled = Object.entries(blocks).some(([key, block]) => {
+          const keyMatch = key.toLowerCase().includes("arrively");
+          const b = block as Record<string, unknown> | null;
+          const typeMatch =
+            typeof b?.type === "string" &&
+            b.type.toLowerCase().includes("arrively");
+          const isMatch = keyMatch || typeMatch;
+          return isMatch && b?.disabled !== true;
         });
       }
     }
   } catch (_e) {
-    // Can't determine embed status — don't show a false alarm
-    embedEnabled = true;
+    // If the check throws, leave embedEnabled as false
+    embedEnabled = false;
   }
 
   return json({ isConfigured: !!config, embedEnabled });
