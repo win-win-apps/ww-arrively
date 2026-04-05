@@ -252,7 +252,7 @@ export default function Dashboard() {
                     url="shopify://admin/themes/current/editor?context=apps"
                     variant={embedEnabled ? "plain" : "primary"}
                     size="slim"
-                    target="_top"
+                    target="_blank"
                   >
                     {embedEnabled
                       ? "Manage App Embeds →"
