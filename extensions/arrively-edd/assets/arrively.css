@@ -1,0 +1,44 @@
+/* Arrively — Estimated Delivery Date widget styles */
+/* Scoped with .arrively- prefix to avoid theme conflicts */
+
+:root {
+  --arrively-accent: #008060;
+  --arrively-bg: #f4f6f8;
+  --arrively-radius: 6px;
+  --arrively-padding: 12px 16px;
+  --arrively-font-size: 14px;
+}
+
+.arrively-widget {
+  margin: 12px 0;
+  font-family: inherit;
+}
+
+.arrively-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--arrively-bg);
+  border-radius: var(--arrively-radius);
+  padding: var(--arrively-padding);
+  border-left: 3px solid var(--arrively-accent);
+  font-size: var(--arrively-font-size);
+  line-height: 1.4;
+}
+
+.arrively-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.arrively-message {
+  color: inherit;
+  font-weight: 500;
+}
+
+@media (max-width: 480px) {
+  .arrively-inner {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+}

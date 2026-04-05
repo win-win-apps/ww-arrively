@@ -1,0 +1,55 @@
+{% comment %}
+  Arrively — Estimated Delivery Date block
+  Reads config from app metafields and per-product rules.
+  Renders a delivery window message with optional truck icon.
+  Listens to variant changes to update per-variant windows.
+{% endcomment %}
+
+{% comment %}
+  APP_ID bracket notation required — see hard-won-fixes #1.
+  The $app namespace is stored as app--{APP_ID}.
+  APP_ID = numeric ID from dev.shopify.com/dashboard/131669393/apps/{APP_ID}
+  Replace ARRIVELY_APP_ID below after app creation.
+{% endcomment %}
+{% assign config_raw = app.metafields['app--343028105217']['config'] %}
+{% assign rules_raw = app.metafields['app--343028105217']['rules'] %}
+{% assign config = config_raw.value %}
+{% assign rules_json = rules_raw.value %}
+
+{% comment %} Per-product metafield (set via product rules page) {% endcomment %}
+{% assign product_rule_raw = product.metafields['app--343028105217']['delivery_rule'] %}
+{% assign product_rule = product_rule_raw.value %}
+
+{% if config == blank %}
+  {% comment %} App not configured — render nothing {% endcomment %}
+{% else %}
+
+<div
+  id="arrively-widget"
+  class="arrively-widget"
+  data-config="{{ config | json | escape }}"
+  data-rules="{{ rules_json | json | escape }}"
+  data-product-id="{{ product.id }}"
+  data-product-rule="{{ product_rule | json | escape }}"
+  data-variants="{{ product.variants | map: 'id' | json | escape }}"
+  style="display:none"
+>
+  <div id="arrively-embed-loaded" style="display:none"></div>
+  <div class="arrively-inner">
+    <span class="arrively-icon" aria-hidden="true">🚚</span>
+    <span class="arrively-message"></span>
+  </div>
+</div>
+
+{{ 'arrively.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'arrively.js' | asset_url }}" defer></script>
+
+{% endif %}
+
+{% schema %}
+{
+  "name": "Arrively — Delivery Date",
+  "target": "section",
+  "settings": []
+}
+{% endschema %}
