@@ -125,7 +125,9 @@
 
     // Build message
     const template = config.messageTemplate || "Estimated delivery: {date_start} – {date_end}";
+    const dateRange = formatDate(deliveryStart) + "\u2013" + formatDate(deliveryEnd);
     const message = template
+      .replace("{date_range}", dateRange)   // alias: some configs store {date_range}
       .replace("{date_start}", formatDate(deliveryStart))
       .replace("{date_end}", formatDate(deliveryEnd));
 
@@ -161,11 +163,41 @@
     });
   }
 
+  // --- Placement ---
+  // Move the widget from its body-level position to just before the
+  // Add-to-Cart buttons. Tries multiple selectors in priority order so it
+  // works across Dawn, Sense, Refresh and most other Shopify themes.
+
+  function placeWidget(widget) {
+    const insertionSelectors = [
+      ".product-form__buttons",       // Dawn, Sense, Refresh
+      "buy-buttons",                   // Dawn 2+ custom element
+      ".product-form > .product-form__submit",
+      'form[action*="/cart/add"] .product-form__buttons',
+      'form[action*="/cart/add"] [type="submit"]',
+      ".shopify-payment-button",       // fallback: Buy-with-Shop button area
+      ".product-form",                 // last resort: whole form
+      "product-form",                  // custom element fallback
+    ];
+
+    for (const sel of insertionSelectors) {
+      const target = document.querySelector(sel);
+      if (target && target.parentNode) {
+        target.parentNode.insertBefore(widget, target);
+        return;
+      }
+    }
+    // No target found — leave widget in place (body level)
+  }
+
   // --- Bootstrap ---
 
   function init() {
     const widget = document.getElementById(WIDGET_ID);
     if (!widget) return;
+
+    // Move widget to product page position before reading/showing
+    placeWidget(widget);
 
     let config, rules;
 

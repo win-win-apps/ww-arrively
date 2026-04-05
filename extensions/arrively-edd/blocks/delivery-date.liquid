@@ -40,6 +40,41 @@
 </div>
 
 {{ 'arrively.css' | asset_url | stylesheet_tag }}
+
+{%- comment -%}
+  Inline placement: move #arrively-widget to just before the Add to Cart buttons.
+  Runs immediately (non-deferred) so the widget is in the right place before
+  the deferred arrively.js runs and makes it visible.
+  Tries multiple selectors to support Dawn, Sense, Refresh and other themes.
+{%- endcomment -%}
+<script>
+(function() {
+  function placeArrivWidget() {
+    var w = document.getElementById('arrively-widget');
+    if (!w) return;
+    var targets = [
+      '.product-form__buttons',
+      'buy-buttons',
+      '.shopify-payment-button',
+      '.product-form',
+      'product-form'
+    ];
+    for (var i = 0; i < targets.length; i++) {
+      var t = document.querySelector(targets[i]);
+      if (t && t.parentNode) {
+        t.parentNode.insertBefore(w, t);
+        return;
+      }
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', placeArrivWidget);
+  } else {
+    placeArrivWidget();
+  }
+})();
+</script>
+
 <script src="{{ 'arrively.js' | asset_url }}" defer></script>
 
 {% endif %}
