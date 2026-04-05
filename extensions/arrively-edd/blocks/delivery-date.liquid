@@ -16,13 +16,11 @@
 {% assign config = config_raw.value %}
 {% assign rules_json = rules_raw.value %}
 
-{% comment %} Per-product metafield (set via product rules page) {% endcomment %}
+{% comment %} Only render on product pages {% endcomment %}
+{% if product and config != blank %}
+
 {% assign product_rule_raw = product.metafields['app--343028105217']['delivery_rule'] %}
 {% assign product_rule = product_rule_raw.value %}
-
-{% if config == blank %}
-  {% comment %} App not configured — render nothing {% endcomment %}
-{% else %}
 
 <div
   id="arrively-widget"
@@ -49,7 +47,7 @@
 {% schema %}
 {
   "name": "Arrively — Delivery Date",
-  "target": "section",
+  "target": "body",
   "settings": []
 }
 {% endschema %}
