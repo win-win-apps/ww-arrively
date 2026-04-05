@@ -19,9 +19,10 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
-  const response = await admin.graphql(`
+  // Check metafields config
+  const configResponse = await admin.graphql(`
     query {
       currentAppInstallation {
         metafields(first: 10, namespace: "$app") {
@@ -31,21 +32,89 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   `);
 
-  const data = await response.json();
-  const nodes = data.data?.currentAppInstallation?.metafields?.nodes ?? [];
+  const configData = await configResponse.json();
+  const nodes = configData.data?.currentAppInstallation?.metafields?.nodes ?? [];
   const configField = nodes.find((m: { key: string }) => m.key === "config");
   const config = configField ? JSON.parse(configField.value) : null;
 
-  return json({ isConfigured: !!config });
+  // Check if app embed is enabled in the main theme
+  let embedEnabled = true; // Default true — don't show false alarm if check fails
+  try {
+    const themeResponse = await admin.graphql(`
+      query {
+        themes(first: 5) {
+          nodes { id legacyResourceId role }
+        }
+      }
+    `);
+    const themeData = await themeResponse.json();
+    const themes = themeData.data?.themes?.nodes ?? [];
+    const mainTheme = themes.find((t: { role: string }) => t.role === "MAIN");
+    const themeId = mainTheme?.legacyResourceId;
+
+    if (themeId && session.accessToken) {
+      const assetResponse = await fetch(
+        `https://${session.shop}/admin/api/2026-04/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`,
+        {
+          headers: {
+            "X-Shopify-Access-Token": session.accessToken,
+          },
+        }
+      );
+
+      if (assetResponse.ok) {
+        const assetData = await assetResponse.json();
+        const settingsJson = JSON.parse(assetData.asset?.value ?? "{}");
+        const preset = settingsJson.current ?? {};
+        const blocks = preset.blocks ?? {};
+
+        // App embed blocks appear in current.blocks with a type containing the app handle
+        embedEnabled = Object.values(blocks).some((block: unknown) => {
+          if (typeof block !== "object" || block === null) return false;
+          const b = block as Record<string, unknown>;
+          return (
+            typeof b.type === "string" &&
+            b.type.includes("arrively") &&
+            b.disabled !== true
+          );
+        });
+      }
+    }
+  } catch (_e) {
+    // Can't determine embed status — don't show a false alarm
+    embedEnabled = true;
+  }
+
+  return json({ isConfigured: !!config, embedEnabled });
 };
 
 export default function Dashboard() {
-  const { isConfigured } = useLoaderData<typeof loader>();
+  const { isConfigured, embedEnabled } = useLoaderData<typeof loader>();
 
   return (
     <Page>
       <TitleBar title="Arrively — Estimated Delivery Date" />
       <Layout>
+        {!embedEnabled && (
+          <Layout.Section>
+            <Banner
+              title="Arrively is not showing on your storefront"
+              tone="warning"
+              action={{
+                content: "Enable in Theme Editor",
+                url: "shopify://admin/themes/current/editor?context=apps",
+                target: "_top" as const,
+              }}
+            >
+              <Text as="p" variant="bodyMd">
+                The Arrively app embed is turned off. Go to{" "}
+                <strong>Theme Editor → App Embeds</strong> and toggle Arrively
+                on to show delivery dates on your product pages.
+              </Text>
+            </Banner>
+          </Layout.Section>
+        )}
+
         {!isConfigured && (
           <Layout.Section>
             <Banner
@@ -66,10 +135,16 @@ export default function Dashboard() {
                 <Text as="h2" variant="headingMd">
                   Setup
                 </Text>
-                {isConfigured ? (
+                {isConfigured && embedEnabled ? (
                   <Badge tone="success">Complete</Badge>
                 ) : (
-                  <Badge tone="attention">2 steps remaining</Badge>
+                  <Badge tone="attention">
+                    {[!isConfigured, !embedEnabled].filter(Boolean).length} step
+                    {[!isConfigured, !embedEnabled].filter(Boolean).length > 1
+                      ? "s"
+                      : ""}{" "}
+                    remaining
+                  </Badge>
                 )}
               </InlineStack>
 
@@ -83,7 +158,13 @@ export default function Dashboard() {
                   padding="150"
                   minWidth="32px"
                 >
-                  <Text as="span" variant="bodySm" fontWeight="bold" tone="text-inverse" alignment="center">
+                  <Text
+                    as="span"
+                    variant="bodySm"
+                    fontWeight="bold"
+                    tone="text-inverse"
+                    alignment="center"
+                  >
                     {isConfigured ? "✓" : "1"}
                   </Text>
                 </Box>
@@ -92,7 +173,8 @@ export default function Dashboard() {
                     Configure your delivery window
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
-                    Set processing time, shipping days, cut-off time, and business day exclusions.
+                    Set processing time, shipping days, cut-off time, and
+                    business day exclusions.
                   </Text>
                   <Button
                     url="/app/settings"
@@ -109,30 +191,40 @@ export default function Dashboard() {
               {/* Step 2 */}
               <InlineStack gap="400" blockAlign="start" wrap={false}>
                 <Box
-                  background="bg-fill-secondary"
+                  background={
+                    embedEnabled ? "bg-fill-success" : "bg-fill-secondary"
+                  }
                   borderRadius="full"
                   padding="150"
                   minWidth="32px"
                 >
-                  <Text as="span" variant="bodySm" fontWeight="bold" alignment="center">
-                    2
+                  <Text
+                    as="span"
+                    variant="bodySm"
+                    fontWeight="bold"
+                    tone={embedEnabled ? "text-inverse" : undefined}
+                    alignment="center"
+                  >
+                    {embedEnabled ? "✓" : "2"}
                   </Text>
                 </Box>
                 <BlockStack gap="150">
                   <Text as="p" variant="bodyMd" fontWeight="semibold">
-                    Add the block to your product pages
+                    Enable Arrively in App Embeds
                   </Text>
                   <Text as="p" variant="bodySm" tone="subdued">
-                    In the theme editor, open a product template and drag the{" "}
-                    <strong>Arrively — Delivery Date</strong> block where you want delivery dates to appear.
+                    In the theme editor, go to{" "}
+                    <strong>App Embeds</strong> and toggle{" "}
+                    <strong>Arrively — Delivery Date</strong> on. Takes 10
+                    seconds, no theme code needed.
                   </Text>
                   <Button
-                    url="shopify://admin/themes/current/editor?template=product"
-                    variant="plain"
+                    url="shopify://admin/themes/current/editor?context=apps"
+                    variant={embedEnabled ? "plain" : "primary"}
                     size="slim"
                     target="_top"
                   >
-                    Open theme editor →
+                    {embedEnabled ? "Manage App Embeds →" : "Open Theme Editor →"}
                   </Button>
                 </BlockStack>
               </InlineStack>
@@ -149,16 +241,18 @@ export default function Dashboard() {
                 </Text>
                 <Divider />
                 <InlineStack align="space-between" blockAlign="center">
-                  <Text as="p" variant="bodyMd" fontWeight="semibold">Free</Text>
+                  <Text as="p" variant="bodyMd" fontWeight="semibold">
+                    Free
+                  </Text>
                   <Badge tone="success">Active</Badge>
                 </InlineStack>
                 <Text as="p" variant="bodySm" tone="subdued">
                   Unlimited delivery date views — no visitor caps, ever.
                 </Text>
                 <List type="bullet">
-                  <List.Item>Unlimited products & views</List.Item>
+                  <List.Item>Unlimited products &amp; views</List.Item>
                   <List.Item>Per-variant delivery rules</List.Item>
-                  <List.Item>Collection & tag-based rules</List.Item>
+                  <List.Item>Collection &amp; tag-based rules</List.Item>
                 </List>
                 <Button url="/app/settings" variant="plain" size="slim">
                   Upgrade to Pro — $6.99/mo →
@@ -168,12 +262,18 @@ export default function Dashboard() {
 
             <Card>
               <BlockStack gap="300">
-                <Text as="h2" variant="headingMd">Need help?</Text>
+                <Text as="h2" variant="headingMd">
+                  Need help?
+                </Text>
                 <Divider />
                 <Text as="p" variant="bodySm">
                   We respond to every support request within 24 hours.
                 </Text>
-                <Button url="mailto:support@wwapps.io" variant="plain" size="slim">
+                <Button
+                  url="mailto:support@wwapps.io"
+                  variant="plain"
+                  size="slim"
+                >
                   Contact support →
                 </Button>
               </BlockStack>
