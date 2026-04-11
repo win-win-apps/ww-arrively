@@ -2,12 +2,12 @@
 /* Scoped with .arrively- prefix to avoid theme conflicts */
 
 :root {
-  --arrively-accent: #008060;
-  --arrively-bg: #f4f6f8;
+  --arrively-accent: #2C6ECB;
   --arrively-radius: 6px;
-  --arrively-padding: 12px 16px;
   --arrively-font-size: 14px;
 }
+
+/* ─── Base widget ────────────────────────────────────────────────────────── */
 
 .arrively-widget {
   margin: 12px 0;
@@ -18,10 +18,6 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--arrively-bg);
-  border-radius: var(--arrively-radius);
-  padding: var(--arrively-padding);
-  border-left: 3px solid var(--arrively-accent);
   font-size: var(--arrively-font-size);
   line-height: 1.4;
 }
@@ -32,13 +28,187 @@
 }
 
 .arrively-message {
-  color: inherit;
   font-weight: 500;
 }
 
+/* ─── Outlined style ─────────────────────────────────────────────────────── */
+
+.arrively-style-outlined .arrively-inner {
+  border: 1.5px solid var(--arrively-accent);
+  border-radius: var(--arrively-radius);
+  padding: 8px 14px;
+  color: var(--arrively-accent);
+  background: transparent;
+}
+
+/* ─── Filled style ───────────────────────────────────────────────────────── */
+
+.arrively-style-filled .arrively-inner {
+  background: var(--arrively-accent);
+  border-radius: var(--arrively-radius);
+  padding: 8px 14px;
+  color: #ffffff;
+}
+
+/* ─── Minimal style ──────────────────────────────────────────────────────── */
+
+.arrively-style-minimal .arrively-inner {
+  color: var(--arrively-accent);
+  padding: 4px 0;
+  background: transparent;
+}
+
+/* ─── Pill style ─────────────────────────────────────────────────────────── */
+
+.arrively-style-pill .arrively-inner {
+  background: var(--arrively-accent);
+  border-radius: 999px;
+  padding: 7px 18px;
+  color: #ffffff;
+}
+
+/* ─── Fallback (no style class set) ─────────────────────────────────────── */
+/* Matches the original bordered-left look for backwards compat */
+
+.arrively-widget:not([class*="arrively-style-"]) .arrively-inner {
+  background: #f4f6f8;
+  border-radius: var(--arrively-radius);
+  padding: 12px 16px;
+  border-left: 3px solid var(--arrively-accent);
+  color: inherit;
+}
+
+/* ─── Amazon-style location bar ──────────────────────────────────────────── */
+
+.arrively-location-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7177;
+  line-height: 1.5;
+}
+
+.arrively-location-pin {
+  font-size: 12px;
+  margin-right: 1px;
+  flex-shrink: 0;
+}
+
+.arrively-location-text {
+  /* inline, no special styling needed */
+}
+
+.arrively-change-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--arrively-accent, #2C6ECB);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.arrively-change-btn:hover {
+  opacity: 0.8;
+}
+
+/* ─── Postal code input form ─────────────────────────────────────────────── */
+
+.arrively-postal-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  width: 100%;
+}
+
+.arrively-postal-input {
+  font-size: 13px;
+  font-family: inherit;
+  border: 1.5px solid #c4c4c4;
+  border-radius: 4px;
+  padding: 5px 10px;
+  width: 140px;
+  outline: none;
+  transition: border-color 0.15s;
+  color: inherit;
+  background: #fff;
+}
+
+.arrively-postal-input:focus {
+  border-color: var(--arrively-accent, #2C6ECB);
+}
+
+.arrively-postal-input.arrively-postal-error {
+  border-color: #d82c0d;
+}
+
+.arrively-postal-input::placeholder {
+  color: #999;
+}
+
+.arrively-postal-submit {
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--arrively-accent, #2C6ECB);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: opacity 0.15s;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.arrively-postal-submit:hover { opacity: 0.85; }
+.arrively-postal-submit:disabled { opacity: 0.6; cursor: default; }
+
+.arrively-postal-cancel {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #6b7177;
+  font-family: inherit;
+  line-height: 1;
+}
+
+.arrively-postal-cancel:hover { color: #333; }
+
+/* ─── Mobile ─────────────────────────────────────────────────────────────── */
+
 @media (max-width: 480px) {
   .arrively-inner {
-    padding: 10px 12px;
     font-size: 13px;
+  }
+
+  .arrively-style-outlined .arrively-inner,
+  .arrively-style-filled .arrively-inner {
+    padding: 7px 12px;
+  }
+
+  .arrively-style-pill .arrively-inner {
+    padding: 6px 14px;
+  }
+
+  .arrively-postal-input {
+    width: 120px;
+    font-size: 12px;
+  }
+
+  .arrively-postal-submit {
+    font-size: 12px;
+    padding: 5px 10px;
   }
 }

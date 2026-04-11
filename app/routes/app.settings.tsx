@@ -18,7 +18,9 @@ import {
   FormLayout,
   Tag,
   Box,
+  Collapsible,
 } from "@shopify/polaris";
+import { ChevronDownIcon, ChevronUpIcon } from "@shopify/polaris-icons";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { useCallback, useState } from "react";
 import { authenticate } from "../shopify.server";
@@ -35,6 +37,7 @@ const DEFAULT_CONFIG = {
   messageTemplate: "Estimated delivery: {date_start} – {date_end}",
   showTruckIcon: true,
   accentColor: "#008060",
+  manualPlacementSelector: "",
 };
 
 type Config = typeof DEFAULT_CONFIG;
@@ -87,6 +90,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     messageTemplate: String(formData.get("messageTemplate") ?? DEFAULT_CONFIG.messageTemplate),
     showTruckIcon: formData.get("showTruckIcon") === "true",
     accentColor: String(formData.get("accentColor") ?? "#008060"),
+    manualPlacementSelector: String(formData.get("manualPlacementSelector") ?? ""),
   };
 
   const mutResp = await admin.graphql(
@@ -142,6 +146,8 @@ export default function Settings() {
   const [messageTemplate, setMessageTemplate] = useState(config.messageTemplate);
   const [showTruckIcon, setShowTruckIcon] = useState(config.showTruckIcon);
   const [accentColor, setAccentColor] = useState(config.accentColor);
+  const [manualPlacementSelector, setManualPlacementSelector] = useState(config.manualPlacementSelector ?? "");
+  const [advancedOpen, setAdvancedOpen] = useState(!!(config.manualPlacementSelector));
 
   // Check for saved=1 in URL
   const urlSaved = typeof window !== "undefined"
@@ -160,11 +166,12 @@ export default function Settings() {
     formData.set("messageTemplate", messageTemplate);
     formData.set("showTruckIcon", String(showTruckIcon));
     formData.set("accentColor", accentColor);
+    formData.set("manualPlacementSelector", manualPlacementSelector);
     submit(formData, { method: "post" });
   }, [
     processingDays, shippingDaysMin, shippingDaysMax, cutoffHour,
     cutoffTimezone, excludeWeekends, holidays, messageTemplate,
-    showTruckIcon, accentColor, submit,
+    showTruckIcon, accentColor, manualPlacementSelector, submit,
   ]);
 
   const addHoliday = useCallback(() => {
@@ -423,6 +430,53 @@ export default function Settings() {
                 <Button url="/app/rules" variant="plain" size="slim">
                   Manage delivery rules →
                 </Button>
+              </BlockStack>
+            </Card>
+          </Box>
+
+          {/* Advanced — manual placement selector */}
+          <Box paddingBlockStart="400">
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between" blockAlign="center">
+                  <BlockStack gap="100">
+                    <InlineStack gap="200" blockAlign="center">
+                      <Text as="h2" variant="headingMd">Advanced Settings</Text>
+                      {manualPlacementSelector && (
+                        <span style={{ display:"inline-block", background:"#e3f0ff", color:"#0066cc", fontSize:11, fontWeight:600, borderRadius:20, padding:"2px 9px" }}>Active</span>
+                      )}
+                    </InlineStack>
+                    <Text as="p" variant="bodySm" tone="subdued">Manual placement selector for theme troubleshooting</Text>
+                  </BlockStack>
+                  <Button variant="plain" icon={advancedOpen ? ChevronUpIcon : ChevronDownIcon} onClick={() => setAdvancedOpen(o => !o)}>
+                    {advancedOpen ? "Hide" : "Show"}
+                  </Button>
+                </InlineStack>
+
+                <Collapsible open={advancedOpen} id="arrively-advanced" transition={{ duration:"200ms", timingFunction:"ease-in-out" }}>
+                  <BlockStack gap="400">
+                    <Divider />
+                    <Banner tone="info">
+                      <Text as="p" variant="bodySm">
+                        Arrively auto-detects where to insert the delivery date widget on 80%+ of themes.
+                        If the widget appears in the wrong spot, paste a CSS selector below for the element
+                        it should appear <strong>before</strong> (e.g. the Add to Cart button).
+                        Example: <code>.product-form__submit</code>
+                      </Text>
+                    </Banner>
+                    <TextField
+                      label="Widget insertion point selector"
+                      helpText="CSS selector for the element before which the delivery date widget should be inserted. Leave blank for automatic placement."
+                      value={manualPlacementSelector}
+                      onChange={setManualPlacementSelector}
+                      autoComplete="off"
+                      placeholder=".product-form__submit"
+                      monospaced
+                      clearButton
+                      onClearButtonClick={() => setManualPlacementSelector("")}
+                    />
+                  </BlockStack>
+                </Collapsible>
               </BlockStack>
             </Card>
           </Box>

@@ -2,7 +2,7 @@
 
 client_id = "50d24c28388da4712f8c9e5618af4095"
 name = "Arrively"
-application_url = "https://conceptual-iowa-medicine-documentation.trycloudflare.com/app"
+application_url = "https://exclusion-successful-october-eye.trycloudflare.com/app"
 embedded = true
 
 [build]
@@ -24,9 +24,9 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://conceptual-iowa-medicine-documentation.trycloudflare.com/auth/callback",
-  "https://conceptual-iowa-medicine-documentation.trycloudflare.com/auth/shopify/callback",
-  "https://conceptual-iowa-medicine-documentation.trycloudflare.com/shopify/auth/callback"
+  "https://exclusion-successful-october-eye.trycloudflare.com/auth/callback",
+  "https://exclusion-successful-october-eye.trycloudflare.com/auth/shopify/callback",
+  "https://exclusion-successful-october-eye.trycloudflare.com/shopify/auth/callback"
 ]
 
 [pos]

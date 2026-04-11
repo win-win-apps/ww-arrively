@@ -9,12 +9,13 @@
   APP_ID bracket notation required — see hard-won-fixes #1.
   The $app namespace is stored as app--{APP_ID}.
   APP_ID = numeric ID from dev.shopify.com/dashboard/131669393/apps/{APP_ID}
-  Replace ARRIVELY_APP_ID below after app creation.
 {% endcomment %}
 {% assign config_raw = app.metafields['app--343028105217']['config'] %}
 {% assign rules_raw = app.metafields['app--343028105217']['rules'] %}
+{% assign badges_raw = app.metafields['app--343028105217']['badges'] %}
 {% assign config = config_raw.value %}
 {% assign rules_json = rules_raw.value %}
+{% assign badges_json = badges_raw.value %}
 
 {% comment %} Only render on product pages {% endcomment %}
 {% if product and config != blank %}
@@ -22,14 +23,46 @@
 {% assign product_rule_raw = product.metafields['app--343028105217']['delivery_rule'] %}
 {% assign product_rule = product_rule_raw.value %}
 
+{% comment %} Collect product tags as comma-separated string {% endcomment %}
+{% assign product_tags_str = product.tags | join: ',' %}
+
+{% comment %} Collect product collection IDs as comma-separated string {% endcomment %}
+{% assign collection_ids_arr = '' %}
+{% for c in product.collections %}
+  {% if forloop.first %}
+    {% assign collection_ids_arr = c.id | append: '' %}
+  {% else %}
+    {% assign collection_ids_arr = collection_ids_arr | append: ',' | append: c.id %}
+  {% endif %}
+{% endfor %}
+
+{% comment %}
+  Customer geo: use shipping address if logged in, otherwise fall back to
+  the storefront's selected/detected country (localization.country).
+  Province code is only available from the customer's saved address.
+{% endcomment %}
+{%- if customer and customer.default_address -%}
+  {%- assign customer_country = customer.default_address.country_code -%}
+  {%- assign customer_province = customer.default_address.province_code -%}
+{%- else -%}
+  {%- assign customer_country = localization.country.iso_code -%}
+  {%- assign customer_province = '' -%}
+{%- endif -%}
+
 <div
   id="arrively-widget"
   class="arrively-widget"
   data-config="{{ config | json | escape }}"
+  data-manual-selector="{{ config.manualPlacementSelector | default: '' | escape }}"
   data-rules="{{ rules_json | json | escape }}"
+  data-badges="{{ badges_json | json | escape }}"
   data-product-id="{{ product.id }}"
   data-product-rule="{{ product_rule | json | escape }}"
   data-variants="{{ product.variants | map: 'id' | json | escape }}"
+  data-product-tags="{{ product_tags_str | escape }}"
+  data-product-collections="{{ collection_ids_arr | escape }}"
+  data-customer-country="{{ customer_country | escape }}"
+  data-customer-province="{{ customer_province | escape }}"
   style="display:none"
 >
   <div id="arrively-embed-loaded" style="display:none"></div>
@@ -52,19 +85,27 @@
   function placeArrivWidget() {
     var w = document.getElementById('arrively-widget');
     if (!w) return;
+    // Manual selector override (set in app Settings > Advanced)
+    var manualSel = (w.dataset.manualSelector || '').trim();
+    if (manualSel) {
+      try {
+        var mt = document.querySelector(manualSel);
+        if (mt && mt.parentNode) { mt.parentNode.insertBefore(w, mt); return; }
+      } catch(e) {}
+    }
     var targets = [
-      '.product-form__buttons',
-      'buy-buttons',
-      '.shopify-payment-button',
-      '.product-form',
-      'product-form'
+      '.product-form__buttons', 'buy-buttons',
+      '.product-purchase', '.product-purchase-button',
+      '.product__payment-button-set', '.product-form__actions',
+      '.purchase-info__actions', '.product-form__item--submit',
+      '.product-form .product-form__controls-group--submit',
+      '.product-single-form .product-form__controls-group',
+      '.product-single__add-to-cart',
+      '.shopify-payment-button', '.product-form', 'product-form'
     ];
     for (var i = 0; i < targets.length; i++) {
       var t = document.querySelector(targets[i]);
-      if (t && t.parentNode) {
-        t.parentNode.insertBefore(w, t);
-        return;
-      }
+      if (t && t.parentNode) { t.parentNode.insertBefore(w, t); return; }
     }
   }
   if (document.readyState === 'loading') {
