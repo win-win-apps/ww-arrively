@@ -20,6 +20,8 @@ import {
   Spinner,
   Box,
   DataTable,
+  Banner,
+  Divider,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 
@@ -51,8 +53,12 @@ export type DeliveryBadge = {
 
 // ─── Loader ──────────────────────────────────────────────────────────────────
 
+const EMBED_HANDLE = "delivery-date";
+const APP_API_KEY = process.env.SHOPIFY_API_KEY || "50d24c28388da4712f8c9e5618af4095";
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const { shop } = session;
 
   const response = await admin.graphql(`
     query {
@@ -73,7 +79,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : [];
   const installId = data.data?.currentAppInstallation?.id;
 
-  return json({ badges, installId });
+  // Deep-link URL for theme editor app embeds panel
+  let themeEditorUrl = `https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${APP_API_KEY}/${EMBED_HANDLE}`;
+
+  // Check if embed is active
+  let embedEnabled: boolean | null = null;
+  try {
+    const themesRes = await fetch(`https://${shop}/admin/api/2025-01/themes.json`, {
+      // @ts-ignore — accessToken is always defined at this point
+      headers: { "X-Shopify-Access-Token": session.accessToken },
+    });
+    const themesJson = await themesRes.json();
+    const mainTheme = (themesJson.themes || []).find((t: any) => t.role === "main");
+    if (mainTheme) {
+      themeEditorUrl = `https://${shop}/admin/themes/${mainTheme.id}/editor?context=apps&template=product&activateAppId=${APP_API_KEY}/${EMBED_HANDLE}`;
+      const assetRes = await fetch(
+        `https://${shop}/admin/api/2025-01/themes/${mainTheme.id}/assets.json?asset[key]=config/settings_data.json`,
+        // @ts-ignore
+        { headers: { "X-Shopify-Access-Token": session.accessToken } }
+      );
+      const assetJson = await assetRes.json();
+      if (assetJson.asset?.value) {
+        const settings = JSON.parse(assetJson.asset.value);
+        const blocks = settings.current?.blocks || {};
+        embedEnabled = Object.values(blocks).some((b: any) => {
+          if (!b || typeof b !== "object") return false;
+          if (b.disabled === true) return false;
+          if (typeof b.handle === "string" && b.handle === EMBED_HANDLE) return true;
+          if (typeof b.type === "string" && b.type.includes(EMBED_HANDLE)) return true;
+          return false;
+        });
+      } else {
+        embedEnabled = false;
+      }
+    }
+  } catch { /* silent */ }
+
+  return json({ badges, installId, embedEnabled, themeEditorUrl });
 };
 
 // ─── Action ──────────────────────────────────────────────────────────────────
@@ -387,10 +429,99 @@ const styleLabel: Record<string, string> = {
   pill: "Pill",
 };
 
+
+// ─── Embed Warning Card ───────────────────────────────────────────────────────
+
+function EmbedWarningCard({ themeEditorUrl }: { themeEditorUrl: string }) {
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  return (
+    <>
+      <Banner
+        title="Delivery badges aren't showing on your store"
+        tone="warning"
+        action={{ content: "Enable in Theme", onAction: () => setShowConfirm(true) }}
+      >
+        <p>The Arrively embed needs to be enabled in your theme before delivery dates will appear on product pages.</p>
+      </Banner>
+
+      {showConfirm && (
+        <>
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 999,
+              backgroundColor: "rgba(0,0,0,0.4)",
+            }}
+            onClick={() => setShowConfirm(false)}
+          />
+          <div
+            style={{
+              position: "fixed",
+              top: "50%", left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 1000,
+              backgroundColor: "white",
+              borderRadius: "12px",
+              padding: "28px",
+              maxWidth: "440px",
+              width: "calc(100% - 40px)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+            }}
+          >
+            <BlockStack gap="400">
+              <Text variant="headingMd" as="h2">Enable Arrively in your theme</Text>
+              <BlockStack gap="200">
+                <Text variant="bodyMd" as="p">
+                  We'll open your Theme Editor in a new tab. Here's what to do:
+                </Text>
+                <div style={{ paddingLeft: "8px" }}>
+                  {[
+                    "The App Embeds panel will open automatically",
+                    'Find "Arrively — Delivery Date" and toggle it on',
+                    "Click Save in the top-right corner",
+                    "Return to this page — your embed status will update",
+                  ].map((step, i) => (
+                    <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "6px", alignItems: "flex-start" }}>
+                      <div style={{
+                        width: "20px", height: "20px", borderRadius: "50%",
+                        backgroundColor: "#005bd3", color: "white",
+                        fontSize: "11px", fontWeight: 600,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        flexShrink: 0, marginTop: "1px",
+                      }}>
+                        {i + 1}
+                      </div>
+                      <Text variant="bodySm" as="p">{step}</Text>
+                    </div>
+                  ))}
+                </div>
+              </BlockStack>
+              <InlineStack gap="200">
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    window.open(themeEditorUrl, "_blank");
+                    setShowConfirm(false);
+                  }}
+                >
+                  Open Theme Editor
+                </Button>
+                <Button variant="plain" onClick={() => setShowConfirm(false)}>
+                  Cancel
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function BadgesIndex() {
-  const { badges } = useLoaderData<typeof loader>();
+  const { badges, embedEnabled, themeEditorUrl } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const submit = useSubmit();
   const navigation = useNavigation();
@@ -498,6 +629,32 @@ export default function BadgesIndex() {
         </Box>
       )}
       <Layout>
+        {/* Embed status indicator */}
+        {embedEnabled !== true && (
+          <Layout.Section>
+            <EmbedWarningCard themeEditorUrl={themeEditorUrl} />
+          </Layout.Section>
+        )}
+        {embedEnabled === true && (
+          <Layout.Section>
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 16px",
+              backgroundColor: "#f1faf5",
+              borderRadius: 8,
+              border: "1px solid #c3e6d4",
+            }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: "50%", backgroundColor: "#008060", flexShrink: 0,
+              }} />
+              <Text variant="bodySm" as="span" tone="subdued">
+                Embed active — delivery dates are showing on your storefront
+              </Text>
+            </div>
+          </Layout.Section>
+        )}
         {localActive.length > 0 && (
           <Layout.Section>
             <Card>

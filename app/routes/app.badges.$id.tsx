@@ -1054,9 +1054,9 @@ export default function BadgeEditor() {
           </BlockStack>
         </Layout.Section>
 
-        {/* Right column: live preview */}
+        {/* Right column: live preview + sticky save */}
         <Layout.Section variant="oneThird">
-          <Box position="sticky" insetBlockStart="400">
+          <div style={{ position: "sticky", top: "16px" }}>
             <Card>
               <BlockStack gap="400">
                 <Text as="h2" variant="headingMd">
@@ -1072,21 +1072,19 @@ export default function BadgeEditor() {
                   Showing example dates. Actual dates are calculated at page load based on
                   your delivery window settings.
                 </Text>
+                <Divider />
+                <Button variant="primary" onClick={handleSave} loading={isSaving} fullWidth>
+                  Save badge
+                </Button>
+                <Button url="/app/badges" fullWidth>
+                  Cancel
+                </Button>
               </BlockStack>
             </Card>
-          </Box>
+          </div>
         </Layout.Section>
       </Layout>
 
-      {/* Bottom save bar */}
-      <Box paddingBlockStart="500">
-        <InlineStack align="end" gap="300">
-          <Button url="/app/badges">Cancel</Button>
-          <Button variant="primary" onClick={handleSave} loading={isSaving}>
-            Save badge
-          </Button>
-        </InlineStack>
-      </Box>
     </Page>
   );
 }
