@@ -22,7 +22,6 @@ import {
   DataTable,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { geoTargetSummary } from "../lib/geo-regions";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -470,17 +469,11 @@ export default function BadgesIndex() {
                 content: "Create badge",
                 onAction: () => navigate("/app/badges/new"),
               }}
-              secondaryAction={{
-                content: "Import from shipping zones",
-                onAction: () => navigate("/app/import-zones"),
-              }}
               image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
             >
               <Text as="p" variant="bodyMd">
-                Customize how the estimated delivery date appears for different
-                products and regions. Target by product, tag, collection, and
-                shipping destination — or import your existing shipping zones to
-                get set up in seconds.
+                Add estimated delivery dates to your product pages. Target
+                all products, specific collections, tags, or individual products.
               </Text>
             </EmptyState>
           </Layout.Section>
@@ -496,12 +489,6 @@ export default function BadgesIndex() {
         content: "Create badge",
         onAction: () => navigate("/app/badges/new"),
       }}
-      secondaryActions={[
-        {
-          content: "Import from shipping zones",
-          onAction: () => navigate("/app/import-zones"),
-        },
-      ]}
     >
       {isLoading && (
         <Box paddingBlockEnd="400">
@@ -609,14 +596,9 @@ export default function BadgesIndex() {
                         <Text variant="bodyMd" as="span" fontWeight="semibold">
                           {badge.name}
                         </Text>
-                        <InlineStack gap="100" wrap>
+                        <div style={{ display: "inline-flex" }}>
                           <PolarisBadge tone="success">Active</PolarisBadge>
-                          {badge.geoTargetType === "specific" && badge.geoTargets && badge.geoTargets.length > 0 && (
-                            <PolarisBadge tone="info">
-                              🌍 {geoTargetSummary(badge.geoTargets)}
-                            </PolarisBadge>
-                          )}
-                        </InlineStack>
+                        </div>
                       </BlockStack>
 
                       {/* Applies to */}
