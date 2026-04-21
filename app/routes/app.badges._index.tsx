@@ -27,6 +27,20 @@ import { authenticate } from "../shopify.server";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export type ZoneConfig = {
+  zoneId: string;
+  zoneName: string;
+  countryCodes: string[]; // ISO country codes in this zone
+  standardMethodId: string | null;
+  standardMethodName: string;
+  standardMin: string;
+  standardMax: string;
+  fastestMethodId: string | null;
+  fastestMethodName: string; // e.g. "Express"
+  fastestMin: string;
+  fastestMax: string;
+};
+
 export type DeliveryBadge = {
   id: string;
   name: string;
@@ -37,18 +51,38 @@ export type DeliveryBadge = {
   productIds: Array<{ id: string; title: string }>;
   tags: string[];
   collectionIds: Array<{ id: string; title: string }>;
-  // Geo targeting — country/province codes like "US-CA", "CA-ON", "AU"
+  // Geo targeting — country/province codes like "US-CA", "CA-ON", "AU" (legacy)
   geoTargetType?: "all" | "specific";
   geoTargets?: string[];
   // Display
-  displayStyle: "outlined" | "filled" | "minimal" | "pill";
+  displayStyle: "card" | "simple" | "outlined" | "filled" | "minimal" | "pill";
+  // Simple style customisation (only used when displayStyle === "simple")
+  simpleBgTransparent?: boolean;
+  simpleBorderColor?: string;    // "" = no border
+  simpleRounding?: "none" | "rounded" | "pill";
+  simpleAlign?: "left" | "center" | "right";
   icon: string;
+  iconColor?: string;
+  badgeText?: string;
   messageTemplate: string;
+  subMessage?: string;
+  subMessageIcon?: string;
+  messageFontSize?: number;
+  subMessageFontSize?: number;
   accentColor: string;
-  // Delivery window overrides (null = use global config)
+  textColor?: string;
+  backgroundColor?: string;
+  // Delivery window — legacy flat fields (fallback for unknown-location shoppers)
   processingDays: string | null;
   shippingDaysMin: string | null;
   shippingDaysMax: string | null;
+  // New: cutoff time (24h "HH:MM" in shop timezone). If set, orders placed
+  // before this time ship the same day; after it, start counting tomorrow.
+  cutoffTime?: string | null;
+  // New: zone-based delivery configs pulled from the shop's delivery profile
+  zoneConfigs?: ZoneConfig[];
+  // New: which zones this badge applies to (empty array = all zones)
+  selectedZoneIds?: string[];
 };
 
 // ─── Loader ──────────────────────────────────────────────────────────────────
@@ -353,21 +387,161 @@ function ShownOnCell({ badge }: { badge: DeliveryBadge }) {
   );
 }
 
+const LIST_ICON_PATHS: Record<string, JSX.Element> = {
+  truck: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 16V6h11v10" />
+      <path d="M14 9h4l3 3v4h-7" />
+      <circle cx="7.5" cy="17" r="1.8" />
+      <circle cx="16.5" cy="17" r="1.8" />
+    </g>
+  ),
+  box: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7l9-4 9 4v10l-9 4-9-4V7z" />
+      <path d="M3 7l9 4 9-4" />
+      <path d="M12 11v10" />
+    </g>
+  ),
+  timer: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="13" r="8" />
+      <path d="M12 9v4l2.5 2.5" />
+      <path d="M9 3h6" />
+    </g>
+  ),
+  check: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12.5l3 3 5-6" />
+    </g>
+  ),
+  calendar: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M8 3v4M16 3v4" />
+    </g>
+  ),
+  bolt: (
+    <g fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 3L4 14h7l-1 7 9-11h-7l1-7z" />
+    </g>
+  ),
+};
+
+function ListIcon({ name, color }: { name: string; color: string }) {
+  const path = LIST_ICON_PATHS[name];
+  if (!path) return null;
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" style={{ color, flexShrink: 0 }} aria-hidden="true">
+      {path}
+    </svg>
+  );
+}
+
 function WidgetPreview({ badge }: { badge: DeliveryBadge }) {
-  const accent = badge.accentColor || "#008060";
+  const accent = badge.accentColor || "#2C6ECB";
+  const textCol = badge.textColor || "#1a1a1a";
+  const bgCol = badge.backgroundColor || "#FFFFFF";
   const today = new Date();
   const min = new Date(today);
   min.setDate(today.getDate() + 4);
   const max = new Date(today);
   max.setDate(today.getDate() + 7);
+  const expEnd = new Date(today);
+  expEnd.setDate(today.getDate() + 3);
   const fmt = (d: Date) =>
     d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const text = (badge.messageTemplate || "Estimated delivery: {date_start} – {date_end}")
+  const text = (badge.messageTemplate || "Get it {date_range}")
     .replace("{date_start}", fmt(min))
     .replace("{date_end}", fmt(max))
-    .replace("{date_range}", `${fmt(min)}–${fmt(max)}`);
+    .replace("{date_range}", `${fmt(min)} - ${fmt(max)}`);
 
-  const style = badge.displayStyle || "outlined";
+  const subText = badge.subMessage
+    ? badge.subMessage
+        .replace("{express_end}", fmt(expEnd))
+        .replace("{date_start}", fmt(min))
+        .replace("{date_end}", fmt(max))
+        .replace("{date_range}", `${fmt(min)} - ${fmt(max)}`)
+    : "";
+
+  const style = badge.displayStyle || "simple";
+
+  /* ── Card style ──────────────────────────────────────────────── */
+  if (style === "card") {
+    const labelText = badge.badgeText || "Delivery";
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          padding: "10px 12px",
+          background: bgCol,
+          border: "1px solid #e1e5ee",
+          borderRadius: "10px",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+          color: textCol,
+          maxWidth: "220px",
+          fontSize: "11px",
+          fontFamily: "inherit",
+          lineHeight: "1.35",
+        }}
+      >
+        {/* Label pill */}
+        <span
+          style={{
+            alignSelf: "flex-start",
+            fontSize: "7px",
+            fontWeight: 800,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase" as const,
+            color: "#fff",
+            background: accent,
+            padding: "2px 6px",
+            borderRadius: "4px",
+            marginBottom: "7px",
+            lineHeight: "1.4",
+          }}
+        >
+          {labelText}
+        </span>
+        {/* Icon + message row */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {badge.icon && (
+            <span
+              style={{
+                flex: "0 0 auto",
+                width: "26px",
+                height: "26px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: `${accent}1a`,
+                border: `1px solid ${accent}2e`,
+                borderRadius: "6px",
+              }}
+            >
+              <ListIcon name={badge.icon} color={accent} />
+            </span>
+          )}
+          <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+            <span style={{ display: "block", fontSize: "12px", fontWeight: 700, color: textCol }}>
+              {text}
+            </span>
+            {subText && (
+              <span style={{ display: "flex", alignItems: "center", gap: "2px", marginTop: "2px", fontSize: "9px", color: "#6b7280", fontWeight: 400 }}>
+                {badge.subMessageIcon && <ListIcon name={badge.subMessageIcon} color="#6b7280" />}
+                {subText}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Simple / legacy styles ──────────────────────────────────── */
 
   // Base — matches .arrively-inner
   const base: React.CSSProperties = {
@@ -384,8 +558,19 @@ function WidgetPreview({ badge }: { badge: DeliveryBadge }) {
     lineHeight: "1.4",
   };
 
-  // Per-style overrides — exactly mirroring arrively.css
+  // Simple style — computed from badge customisation fields
+  const simpleRounding = badge.simpleRounding === "pill" ? "999px" : badge.simpleRounding === "none" ? "0" : "6px";
+  const simplePreview: React.CSSProperties = {
+    color: badge.textColor || accent,
+    backgroundColor: badge.simpleBgTransparent ? "transparent" : (badge.backgroundColor || accent),
+    border: badge.simpleBorderColor ? `1.5px solid ${badge.simpleBorderColor}` : "none",
+    borderRadius: simpleRounding,
+    padding: badge.simpleRounding === "pill" ? "5px 14px" : "6px 12px",
+  };
+
+  // Per-style overrides — legacy + new
   const styleMap: Record<string, React.CSSProperties> = {
+    simple: simplePreview,
     outlined: {
       border: `1.5px solid ${accent}`,
       borderRadius: "6px",
@@ -414,7 +599,7 @@ function WidgetPreview({ badge }: { badge: DeliveryBadge }) {
 
   return (
     <div style={{ ...base, ...styleMap[style] }}>
-      {badge.icon && <span style={{ flexShrink: 0 }}>{badge.icon}</span>}
+      {badge.icon && <ListIcon name={badge.icon} color={badge.iconColor ?? badge.accentColor} />}
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
         {text}
       </span>
@@ -448,38 +633,26 @@ function EmbedWarningCard({ themeEditorUrl }: { themeEditorUrl: string }) {
       {showConfirm && (
         <>
           <div
-            style={{
-              position: "fixed", inset: 0, zIndex: 999,
-              backgroundColor: "rgba(0,0,0,0.4)",
-            }}
+            style={{ position: "fixed", inset: 0, zIndex: 999, backgroundColor: "rgba(0,0,0,0.4)" }}
             onClick={() => setShowConfirm(false)}
           />
-          <div
-            style={{
-              position: "fixed",
-              top: "50%", left: "50%",
-              transform: "translate(-50%, -50%)",
-              zIndex: 1000,
-              backgroundColor: "white",
-              borderRadius: "12px",
-              padding: "28px",
-              maxWidth: "440px",
-              width: "calc(100% - 40px)",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-            }}
-          >
+          <div style={{
+            position: "fixed", top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)", zIndex: 1000,
+            backgroundColor: "white", borderRadius: "12px", padding: "28px",
+            maxWidth: "440px", width: "calc(100% - 40px)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+          }}>
             <BlockStack gap="400">
-              <Text variant="headingMd" as="h2">Enable Arrively in your theme</Text>
+              <Text variant="headingMd" as="h2">Enable delivery dates on your store</Text>
               <BlockStack gap="200">
                 <Text variant="bodyMd" as="p">
-                  We'll open your Theme Editor in a new tab. Here's what to do:
+                  We'll open your Theme Editor with the embed already turned on. Just two quick steps:
                 </Text>
                 <div style={{ paddingLeft: "8px" }}>
                   {[
-                    "The App Embeds panel will open automatically",
-                    'Find "Arrively — Delivery Date" and toggle it on',
-                    "Click Save in the top-right corner",
-                    "Return to this page — your embed status will update",
+                    'Click "Save" in the top-right corner of the Theme Editor',
+                    "Come back to this page - your status will update automatically",
                   ].map((step, i) => (
                     <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "6px", alignItems: "flex-start" }}>
                       <div style={{
@@ -499,16 +672,11 @@ function EmbedWarningCard({ themeEditorUrl }: { themeEditorUrl: string }) {
               <InlineStack gap="200">
                 <Button
                   variant="primary"
-                  onClick={() => {
-                    window.open(themeEditorUrl, "_blank");
-                    setShowConfirm(false);
-                  }}
+                  onClick={() => { window.open(themeEditorUrl, "_blank"); setShowConfirm(false); }}
                 >
                   Open Theme Editor
                 </Button>
-                <Button variant="plain" onClick={() => setShowConfirm(false)}>
-                  Cancel
-                </Button>
+                <Button variant="plain" onClick={() => setShowConfirm(false)}>Cancel</Button>
               </InlineStack>
             </BlockStack>
           </div>
@@ -665,134 +833,79 @@ export default function BadgesIndex() {
                   </Text>
                 </InlineStack>
 
-                <div
+                <table
                   style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
                     border: "1px solid #e1e3e5",
                     borderRadius: "8px",
                     overflow: "hidden",
+                    tableLayout: "auto",
                   }}
                 >
-                  {/* Header */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "36px 36px 220px 1fr 100px 80px auto",
-                      gap: "8px",
-                      padding: "10px 16px",
-                      backgroundColor: "#f6f6f7",
-                      borderBottom: "1px solid #e1e3e5",
-                    }}
-                  >
-                    <span />
-                    <Text variant="bodySm" as="span" tone="subdued">#</Text>
-                    <Text variant="bodySm" as="span" tone="subdued">Preview</Text>
-                    <Text variant="bodySm" as="span" tone="subdued">Name</Text>
-                    <Text variant="bodySm" as="span" tone="subdued">Applies to</Text>
-                    <Text variant="bodySm" as="span" tone="subdued">Style</Text>
-                    <Text variant="bodySm" as="span" tone="subdued">Actions</Text>
-                  </div>
-
-                  {localActive.map((badge, idx) => (
-                    <div
-                      key={badge.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, idx)}
-                      onDragOver={(e) => handleDragOver(e, idx)}
-                      onDrop={(e) => handleDrop(e, idx)}
-                      onDragEnd={handleDragEnd}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "36px 36px 220px 1fr 100px 80px auto",
-                        gap: "8px",
-                        alignItems: "center",
-                        padding: "12px 16px",
-                        borderBottom:
-                          idx < localActive.length - 1
-                            ? "1px solid #e1e3e5"
-                            : "none",
-                        cursor: "grab",
-                        backgroundColor:
-                          dragOverIdx === idx && dragIdx !== idx
-                            ? "#f0f7ff"
-                            : "white",
-                        opacity: dragIdx === idx ? 0.4 : 1,
-                        borderTop:
-                          dragOverIdx === idx &&
-                          dragIdx !== null &&
-                          dragIdx > idx
-                            ? "2px solid #005bd3"
-                            : "none",
-                        transition: "background-color 0.1s, opacity 0.1s",
-                        userSelect: "none",
-                      }}
-                    >
-                      {/* Drag grip */}
-                      <span
+                  <thead>
+                    <tr style={{ backgroundColor: "#f6f6f7", borderBottom: "1px solid #e1e3e5" }}>
+                      <th style={{ padding: "10px 12px", width: "36px" }} />
+                      <th style={{ padding: "10px 4px", textAlign: "left", fontSize: "13px", fontWeight: 400, color: "#6d7175", width: "30px" }}>#</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "13px", fontWeight: 400, color: "#6d7175" }}>Preview</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "13px", fontWeight: 400, color: "#6d7175" }}>Name</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "13px", fontWeight: 400, color: "#6d7175" }}>Applies to</th>
+                      <th style={{ padding: "10px 12px", textAlign: "left", fontSize: "13px", fontWeight: 400, color: "#6d7175" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {localActive.map((badge, idx) => (
+                      <tr
+                        key={badge.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, idx)}
+                        onDragOver={(e) => handleDragOver(e, idx)}
+                        onDrop={(e) => handleDrop(e, idx)}
+                        onDragEnd={handleDragEnd}
                         style={{
-                          color: "#8c9196",
-                          fontSize: "18px",
-                          lineHeight: "1",
-                          textAlign: "center",
+                          borderBottom: idx < localActive.length - 1 ? "1px solid #e1e3e5" : "none",
                           cursor: "grab",
+                          backgroundColor: dragOverIdx === idx && dragIdx !== idx ? "#f0f7ff" : "white",
+                          opacity: dragIdx === idx ? 0.4 : 1,
+                          borderTop: dragOverIdx === idx && dragIdx !== null && dragIdx > idx ? "2px solid #005bd3" : "none",
+                          transition: "background-color 0.1s, opacity 0.1s",
+                          userSelect: "none",
                         }}
                       >
-                        ⠿
-                      </span>
-
-                      {/* Priority # */}
-                      <Text variant="bodySm" as="span" tone="subdued">
-                        {idx + 1}
-                      </Text>
-
-                      {/* Preview */}
-                      <WidgetPreview badge={badge} />
-
-                      {/* Name + status */}
-                      <BlockStack gap="100">
-                        <Text variant="bodyMd" as="span" fontWeight="semibold">
-                          {badge.name}
-                        </Text>
-                        <div style={{ display: "inline-flex" }}>
-                          <PolarisBadge tone="success">Active</PolarisBadge>
-                        </div>
-                      </BlockStack>
-
-                      {/* Applies to */}
-                      <ShownOnCell badge={badge} />
-
-                      {/* Style */}
-                      <Text variant="bodyMd" as="span">
-                        {styleLabel[badge.displayStyle] || badge.displayStyle}
-                      </Text>
-
-                      {/* Actions */}
-                      <InlineStack gap="200">
-                        <Button
-                          size="slim"
-                          onClick={() => navigate(`/app/badges/${badge.id}`)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="slim"
-                          tone="critical"
-                          onClick={() => handleToggle(badge.id)}
-                        >
-                          Deactivate
-                        </Button>
-                        <Button
-                          size="slim"
-                          tone="critical"
-                          variant="plain"
-                          onClick={() => handleDelete(badge.id)}
-                        >
-                          Delete
-                        </Button>
-                      </InlineStack>
-                    </div>
-                  ))}
-                </div>
+                        <td style={{ padding: "12px 12px", textAlign: "center", verticalAlign: "middle", width: "36px" }}>
+                          <span style={{ color: "#8c9196", fontSize: "18px", lineHeight: "1", cursor: "grab" }}>⠿</span>
+                        </td>
+                        <td style={{ padding: "12px 4px", verticalAlign: "middle", width: "30px" }}>
+                          <Text variant="bodySm" as="span" tone="subdued">{idx + 1}</Text>
+                        </td>
+                        <td style={{ padding: "12px 12px", verticalAlign: "middle" }}>
+                          <WidgetPreview badge={badge} />
+                        </td>
+                        <td style={{ padding: "12px 12px", verticalAlign: "middle" }}>
+                          <Text variant="bodyMd" as="span">{badge.name}</Text>
+                        </td>
+                        <td style={{ padding: "12px 12px", verticalAlign: "middle" }}>
+                          <ShownOnCell badge={badge} />
+                        </td>
+                        <td style={{ padding: "12px 12px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                          <InlineStack gap="200" blockAlign="center">
+                            <Button size="slim" onClick={() => navigate(`/app/badges/${badge.id}`)}>Edit</Button>
+                            <Button size="slim" tone="critical" onClick={() => handleToggle(badge.id)}>Deactivate</Button>
+                            <button
+                              onClick={() => handleDelete(badge.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", display: "inline-flex", alignItems: "center", color: "#d82c0d" }}
+                              title="Delete badge"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                                <path d="M8 3.5V4H5V5.5H15V4H12V3.5C12 2.948 11.552 2.5 11 2.5H9C8.448 2.5 8 2.948 8 3.5ZM6 7V16C6 16.552 6.448 17 7 17H13C13.552 17 14 16.552 14 16V7H6ZM9 9V15H8V9H9ZM12 9V15H11V9H12Z" fill="currentColor"/>
+                              </svg>
+                            </button>
+                          </InlineStack>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
 
                 {localActive.length > 1 && (
                   <Text variant="bodySm" as="p" tone="subdued">
@@ -812,46 +925,31 @@ export default function BadgesIndex() {
                 <Text variant="headingMd" as="h2">
                   Inactive ({inactiveBadges.length})
                 </Text>
+                <div className="arrively-inactive-table" style={{ opacity: 0.7 }}>
+                <style>{`.arrively-inactive-table .Polaris-DataTable__TableRow { background-color: #f6f6f7 !important; }`}</style>
                 <DataTable
-                  columnContentTypes={[
-                    "text",
-                    "text",
-                    "text",
-                    "text",
-                    "text",
-                  ]}
-                  headings={["Preview", "Name", "Applies to", "Style", "Actions"]}
+                  columnContentTypes={["text", "text", "text", "text"]}
+                  headings={["Preview", "Name", "Applies to", "Actions"]}
                   rows={inactiveBadges.map((badge) => [
                     <WidgetPreview key={badge.id} badge={badge} />,
-                    <BlockStack key={badge.id} gap="100">
-                      <Text variant="bodyMd" as="span" fontWeight="semibold">
-                        {badge.name}
-                      </Text>
-                      <PolarisBadge>Inactive</PolarisBadge>
-                    </BlockStack>,
+                    badge.name,
                     <ShownOnCell key={badge.id} badge={badge} />,
-                    styleLabel[badge.displayStyle] || badge.displayStyle,
-                    <InlineStack key={badge.id} gap="200">
-                      <Button
-                        size="slim"
-                        onClick={() => navigate(`/app/badges/${badge.id}`)}
-                      >
-                        Edit
-                      </Button>
-                      <Button size="slim" onClick={() => handleToggle(badge.id)}>
-                        Activate
-                      </Button>
-                      <Button
-                        size="slim"
-                        tone="critical"
-                        variant="plain"
+                    <InlineStack key={badge.id} gap="200" blockAlign="center">
+                      <Button size="slim" onClick={() => navigate(`/app/badges/${badge.id}`)}>Edit</Button>
+                      <Button size="slim" onClick={() => handleToggle(badge.id)}>Activate</Button>
+                      <button
                         onClick={() => handleDelete(badge.id)}
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", display: "inline-flex", alignItems: "center", color: "#d82c0d" }}
+                        title="Delete badge"
                       >
-                        Delete
-                      </Button>
+                        <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                          <path d="M8 3.5V4H5V5.5H15V4H12V3.5C12 2.948 11.552 2.5 11 2.5H9C8.448 2.5 8 2.948 8 3.5ZM6 7V16C6 16.552 6.448 17 7 17H13C13.552 17 14 16.552 14 16V7H6ZM9 9V15H8V9H9ZM12 9V15H11V9H12Z" fill="currentColor"/>
+                        </svg>
+                      </button>
                     </InlineStack>,
                   ])}
                 />
+                </div>
               </BlockStack>
             </Card>
           </Layout.Section>

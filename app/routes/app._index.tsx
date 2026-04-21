@@ -41,6 +41,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     : [];
   const activeBadges = badges.filter((b) => b.isActive).length;
 
+  const zonesField = nodes.find((m: { key: string }) => m.key === "zones");
+  const hasZones = zonesField ? JSON.parse(zonesField.value).length > 0 : false;
+
   // Embed status + theme editor deep-link
   let embedEnabled: boolean | null = null;
   let themeEditorUrl = `https://${shop}/admin/themes/current/editor?context=apps&activateAppId=${API_KEY}/${EMBED_HANDLE}`;
@@ -78,6 +81,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     totalBadges: badges.length,
     activeBadges,
     hasAnyBadge: badges.length > 0,
+    hasZones,
     embedEnabled,
     themeEditorUrl,
   });
@@ -114,17 +118,15 @@ function EnableEmbedPopup({ themeEditorUrl, onClose }: { themeEditorUrl: string;
         boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
       }}>
         <BlockStack gap="400">
-          <Text variant="headingMd" as="h2">Enable Arrively in your theme</Text>
+          <Text variant="headingMd" as="h2">Enable delivery dates on your store</Text>
           <BlockStack gap="200">
             <Text variant="bodyMd" as="p">
-              We'll open your Theme Editor in a new tab. Here's what to do:
+              We'll open your Theme Editor with the embed already turned on. Just two quick steps:
             </Text>
             <div style={{ paddingLeft: "8px" }}>
               {[
-                "The App Embeds panel will open automatically",
-                'Find "Arrively — Delivery Date" and toggle it on',
-                "Click Save in the top-right corner",
-                "Return to this page — your embed status will update",
+                'Click "Save" in the top-right corner of the Theme Editor',
+                "Come back to this page - your status will update automatically",
               ].map((step, i) => (
                 <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "6px", alignItems: "flex-start" }}>
                   <div style={{
@@ -262,35 +264,132 @@ function ReviewWidget() {
 
 // ─── Onboarding card (no badges yet) ─────────────────────────────────────────
 
+// ─── Onboarding hero banner ─────────────────────────────────────────────────
+
+function OnboardingHero({ embedDone }: { embedDone: boolean }) {
+  const accentColor = "#2C6ECB";
+
+  return (
+    <div style={{
+      background: "linear-gradient(135deg, #eef4fb 0%, #e8f0fe 40%, #f0e8fc 100%)",
+      borderRadius: 14,
+      padding: "20px 24px",
+      display: "flex",
+      alignItems: "center",
+      gap: 20,
+      border: "1px solid #dde4f0",
+    }}>
+      {/* Mini delivery badge preview */}
+      <div style={{
+        flex: "0 0 auto",
+        display: "flex", flexDirection: "column",
+        padding: "12px 16px",
+        background: "#fff",
+        border: "1px solid #e1e5ee",
+        borderRadius: 12,
+        minWidth: 190,
+        boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+      }}>
+        <span style={{
+          display: "inline-block", alignSelf: "flex-start",
+          fontSize: 8, fontWeight: 800, letterSpacing: "0.1em",
+          textTransform: "uppercase", color: "#fff",
+          background: accentColor, padding: "2px 7px",
+          borderRadius: 4, marginBottom: 7, lineHeight: 1.4,
+        }}>Delivery</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{
+            width: 28, height: 28,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: `${accentColor}14`, border: `1px solid ${accentColor}30`,
+            borderRadius: 7, flexShrink: 0,
+          }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1a1a", lineHeight: 1.25 }}>Get it Apr 24 - Apr 28</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, color: "#6b7280", marginTop: 3 }}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              Or by Apr 23 with Express
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Steps indicator */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", marginBottom: 10, lineHeight: 1.3 }}>
+          2 quick steps to go live
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {/* Step 1 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{
+              width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+              backgroundColor: embedDone ? "#008060" : accentColor,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {embedDone ? (
+                <svg width="11" height="9" viewBox="0 0 12 10" fill="none"><path d="M1 5l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              ) : (
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>1</span>
+              )}
+            </div>
+            <span style={{ fontSize: 12, color: embedDone ? "#8c9196" : "#1a1a1a", fontWeight: 500, textDecoration: embedDone ? "line-through" : "none" }}>
+              Turn on the embed
+            </span>
+          </div>
+          {/* Step 2 */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{
+              width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+              backgroundColor: embedDone ? accentColor : "#c4cdd5",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>2</span>
+            </div>
+            <span style={{ fontSize: 12, color: "#1a1a1a", fontWeight: 500 }}>
+              Create your first badge
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OnboardingCard({
   embedEnabled,
+  hasZones,
   themeEditorUrl,
   navigate,
 }: {
   embedEnabled: boolean | null;
+  hasZones: boolean;
   themeEditorUrl: string;
   navigate: (path: string) => void;
 }) {
   const [showEmbed, setShowEmbed] = useState(false);
 
-  const badgeDone = false;
-  const embedDone = embedEnabled !== false;
-  const completed = (badgeDone ? 1 : 0) + (embedDone ? 1 : 0);
+  const embedDone = embedEnabled === true;
+  const completed = (embedDone ? 1 : 0);
 
   const steps = [
     {
-      done: badgeDone,
-      title: "Create your first delivery badge",
-      desc: "Set up a delivery estimate for your products — try targeting all products to start.",
-      cta: <Button size="slim" variant="primary" onClick={() => navigate("/app/badges/new")}>Create badge</Button>,
+      done: embedDone,
+      title: "Turn on the delivery date embed",
+      desc: "Activate the app embed so delivery estimates show up on every product page automatically.",
+      cta: embedDone ? null : (
+        <Button size="slim" variant="primary" onClick={() => setShowEmbed(true)}>Enable in Theme</Button>
+      ),
     },
     {
-      done: embedDone,
-      title: "Enable Arrively in your theme",
-      desc: "Activate the app embed so delivery dates appear on your product pages.",
-      cta: embedDone ? null : (
-        <Button size="slim" onClick={() => setShowEmbed(true)}>Enable in Theme</Button>
-      ),
+      done: false,
+      title: "Create your first delivery badge",
+      desc: "Set up a delivery estimate for your products - try targeting all products to start.",
+      cta: <Button size="slim" variant={embedDone ? "primary" : undefined} onClick={() => navigate("/app/badges/new")}>Create badge</Button>,
     },
   ];
 
@@ -298,10 +397,13 @@ function OnboardingCard({
     <>
       <Card>
         <BlockStack gap="400">
+          {/* Hero banner */}
+          <OnboardingHero embedDone={embedDone} />
+
           <BlockStack gap="100">
-            <Text variant="headingMd" as="h2">Get started with Arrively</Text>
+            <Text variant="headingLg" as="h2">You're 2 steps away from showing delivery dates</Text>
             <Text variant="bodySm" as="p" tone="subdued">
-              Complete these two steps to start showing delivery dates on your products.
+              Shipping zones have been auto-imported from your Shopify settings. Just enable the embed and create your first badge.
             </Text>
           </BlockStack>
 
@@ -333,7 +435,6 @@ function OnboardingCard({
                 borderTop: i > 0 ? "1px solid #e4e5e7" : "none",
               }}
             >
-              {/* Check circle */}
               <div style={{
                 width: 22, height: 22, borderRadius: "50%", flexShrink: 0, marginTop: 2,
                 backgroundColor: step.done ? "#008060" : "transparent",
@@ -400,8 +501,8 @@ function BadgesCard({
             </Text>
           </BlockStack>
           <InlineStack gap="200">
-            <Button variant="primary" onClick={() => navigate("/app/badges/new")}>+ Create badge</Button>
-            <Button onClick={() => navigate("/app/badges")}>View all</Button>
+            <Button variant="primary" onClick={() => navigate("/app/badges")}>View badges</Button>
+            <Button onClick={() => navigate("/app/zones")}>Edit shipping zones</Button>
           </InlineStack>
 
           {/* Embed nudge — only when definitively OFF */}
@@ -443,7 +544,7 @@ function BadgesCard({
 // ─── Home page ────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const { totalBadges, activeBadges, hasAnyBadge, embedEnabled, themeEditorUrl } =
+  const { totalBadges, activeBadges, hasAnyBadge, hasZones, embedEnabled, themeEditorUrl } =
     useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const { revalidate } = useRevalidator();
@@ -463,18 +564,19 @@ export default function Home() {
 
   return (
     <Page>
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
+      {/* Embed active pill — shown above everything */}
+      <EmbedPill embedEnabled={embedEnabled} />
+
+      <div style={{ display: "flex", gap: 24, alignItems: "flex-start", marginTop: embedEnabled ? 12 : 0 }}>
 
         {/* ── Main content column ── */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <BlockStack gap="400">
 
-            {/* Embed active pill — shown above the card when live */}
-            <EmbedPill embedEnabled={embedEnabled} />
-
             {!hasAnyBadge ? (
               <OnboardingCard
                 embedEnabled={embedEnabled}
+                hasZones={hasZones}
                 themeEditorUrl={themeEditorUrl}
                 navigate={navigate}
               />

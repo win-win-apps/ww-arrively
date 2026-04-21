@@ -1,7 +1,7 @@
-api_version = "2025-01"
+api_version = "2026-04"
 
 [[extensions]]
 uid = "3c9cf765-b71f-afe4-e9e7-a6a63c264e3682e7fe2c"
 type = "theme_app_extension"
-name = "Arrively — Delivery Date"
-handle = "arrively-edd"
+name = "Estimated Delivery Date"
+handle = "ww-arrively"

@@ -24,6 +24,7 @@
     config: {},
     rules: [],
     badges: [],
+    zones: [],
     productId: null,
     variantId: null,
     country: null,
@@ -206,34 +207,27 @@
     const stripGid = (id) => String(id).split("/").pop();
     const geoOk = (badge) => matchesGeo(badge, customerCountry, customerProvince);
 
-    // 1. Specific product + geo
+    // Priority order wins. First matching badge (by priority) is returned.
     for (const badge of activeBadges) {
+      if (!geoOk(badge)) continue;
+
+      if (badge.targetType === "all") return badge;
+
       if (badge.targetType === "specific") {
         const ids = (badge.productIds || []).map((p) => stripGid(typeof p === "object" ? p.id : p));
-        if (ids.includes(String(productId)) && geoOk(badge)) return badge;
+        if (ids.includes(String(productId))) return badge;
       }
-    }
 
-    // 2. Collection + geo
-    for (const badge of activeBadges) {
       if (badge.targetType === "collection") {
         const colIds = (badge.collectionIds || []).map((c) => stripGid(typeof c === "object" ? c.id : c));
         const strippedProductCollections = productCollections.map(stripGid);
-        if (colIds.some((id) => strippedProductCollections.includes(id)) && geoOk(badge)) return badge;
+        if (colIds.some((id) => strippedProductCollections.includes(id))) return badge;
       }
-    }
 
-    // 3. Tag + geo
-    for (const badge of activeBadges) {
       if (badge.targetType === "tag") {
         const badgeTags = badge.tags || [];
-        if (badgeTags.some((t) => productTags.includes(t)) && geoOk(badge)) return badge;
+        if (badgeTags.some((t) => productTags.includes(t))) return badge;
       }
-    }
-
-    // 4. All products + geo
-    for (const badge of activeBadges) {
-      if (badge.targetType === "all" && geoOk(badge)) return badge;
     }
 
     return null;
@@ -276,63 +270,197 @@
     return best || def;
   }
 
+  // ─── Zone matching ────────────────────────────────────────────────────────
+
+  /**
+   * Find the best matching zone for a customer's location.
+   * Falls back to the zone with id "fallback" if no geo match.
+   * zones = array of SavedZone objects from the $app:zones metafield.
+   */
+  function matchZone(zones, customerCountry, customerProvince) {
+    if (!zones || !Array.isArray(zones) || zones.length === 0) return null;
+
+    var cc = (customerCountry || "").toUpperCase();
+    var pc = (customerProvince || "").toUpperCase();
+
+    // Try province-level match first, then country-level
+    for (var i = 0; i < zones.length; i++) {
+      var z = zones[i];
+      if (!z.enabled || z.id === "fallback") continue;
+      var codes = z.geoCodes || [];
+      for (var j = 0; j < codes.length; j++) {
+        var parts = codes[j].split("-");
+        var zCountry = parts[0].toUpperCase();
+        var zProvince = parts.length > 1 ? parts.slice(1).join("-").toUpperCase() : null;
+        if (zCountry === cc) {
+          if (zProvince && pc && zProvince === pc) return z;
+          if (!zProvince) return z;
+        }
+      }
+    }
+
+    // Fall back to the "fallback" zone
+    for (var k = 0; k < zones.length; k++) {
+      if (zones[k].id === "fallback" && zones[k].enabled) return zones[k];
+    }
+    return null;
+  }
+
+  // ─── SVG icon library (matches admin BadgeIcon) ──────────────────────────
+
+  var ICON_SVGS = {
+    truck: '<svg width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="COLOR" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16V6h11v10"/><path d="M14 9h4l3 3v4h-7"/><circle cx="7.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/></g></svg>',
+    box: '<svg width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="COLOR" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4v10l-9 4-9-4V7z"/><path d="M3 7l9 4 9-4"/><path d="M12 21V11"/></g></svg>',
+    timer: '<svg width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="COLOR" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M10 2h4"/></g></svg>',
+    check: '<svg width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="COLOR" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-5"/></g></svg>',
+    calendar: '<svg width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="COLOR" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></g></svg>',
+    bolt: '<svg width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="COLOR" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  };
+
+  function iconSvg(name, size, color) {
+    var tpl = ICON_SVGS[name];
+    if (!tpl) return "";
+    return tpl.replace(/SIZE/g, String(size)).replace(/COLOR/g, color);
+  }
+
   // ─── Core render ──────────────────────────────────────────────────────────
 
   function renderWidget(config, rules, badges, productId, variantId, customerCountry, customerProvince) {
-    const widget = document.getElementById(WIDGET_ID);
+    var widget = document.getElementById(WIDGET_ID);
     if (!widget) return;
 
-    const msgEl = widget.querySelector(".arrively-message");
-    const iconEl = widget.querySelector(".arrively-icon");
+    var msgEl = widget.querySelector(".arrively-message");
+    var iconEl = widget.querySelector(".arrively-icon");
     if (!msgEl) return;
 
-    const productTags = (widget.dataset.productTags || "").split(",").map((t) => t.trim()).filter(Boolean);
-    const productCollections = (widget.dataset.productCollections || "").split(",").map((c) => c.trim()).filter(Boolean);
+    var productTags = (widget.dataset.productTags || "").split(",").map(function(t) { return t.trim(); }).filter(Boolean);
+    var productCollections = (widget.dataset.productCollections || "").split(",").map(function(c) { return c.trim(); }).filter(Boolean);
 
-    const badge = resolveBadge(badges, productId, productTags, productCollections, customerCountry, customerProvince);
+    var badge = resolveBadge(badges, productId, productTags, productCollections, customerCountry, customerProvince);
 
-    const displayStyle = (badge && badge.displayStyle) || "outlined";
-    const iconChar = badge && badge.icon !== undefined ? badge.icon : (config.showTruckIcon !== false ? "🚚" : "");
-    const accentColor = (badge && badge.accentColor) || config.accentColor || "#2C6ECB";
-    const template = (badge && badge.messageTemplate) || config.messageTemplate || "Estimated delivery: {date_start} – {date_end}";
+    var displayStyle = (badge && badge.displayStyle) || "card";
+    var iconName = badge && badge.icon !== undefined ? badge.icon : "truck";
+    var accentColor = (badge && badge.accentColor) || config.accentColor || "#2C6ECB";
+    var textColor = (badge && badge.textColor) || "#FFFFFF";
+    var template = (badge && badge.messageTemplate) || config.messageTemplate || "Get it {date_range}";
 
-    let windowConfig = config;
+    var windowConfig = config;
     if (badge && badge.processingDays !== null && badge.processingDays !== undefined) {
-      windowConfig = { ...config, processingDays: badge.processingDays, shippingDaysMin: badge.shippingDaysMin, shippingDaysMax: badge.shippingDaysMax };
+      windowConfig = Object.assign({}, config, { processingDays: badge.processingDays, shippingDaysMin: badge.shippingDaysMin, shippingDaysMax: badge.shippingDaysMax });
     }
-    const rule = resolveRule(windowConfig, rules, productId, variantId, productTags, productCollections);
+    var rule = resolveRule(windowConfig, rules, productId, variantId, productTags, productCollections);
 
-    const now = new Date();
-    const cutoffHour = parseInt(config.cutoffHour || "14", 10);
-    const processingStart = new Date(now);
+    var now = new Date();
+    var cutoffHour = parseInt(config.cutoffHour || "14", 10);
+    var processingStart = new Date(now);
     if (now.getHours() >= cutoffHour) processingStart.setDate(processingStart.getDate() + 1);
 
-    const excludeWeekends = config.excludeWeekends !== false;
-    const holidays = config.holidays || [];
+    var excludeWeekends = config.excludeWeekends !== false;
+    var holidays = config.holidays || [];
 
-    let shippedDate = processingStart;
+    var shippedDate = processingStart;
     if (rule.processingDays > 0) {
       shippedDate = addBusinessDays(processingStart, rule.processingDays, excludeWeekends, holidays);
     }
 
-    const deliveryStart = addBusinessDays(shippedDate, rule.shippingDaysMin, excludeWeekends, holidays);
-    const deliveryEnd = addBusinessDays(shippedDate, rule.shippingDaysMax, excludeWeekends, holidays);
+    var deliveryStart = addBusinessDays(shippedDate, rule.shippingDaysMin, excludeWeekends, holidays);
+    var deliveryEnd = addBusinessDays(shippedDate, rule.shippingDaysMax, excludeWeekends, holidays);
 
-    const dateRange = formatDate(deliveryStart) + "\u2013" + formatDate(deliveryEnd);
-    const message = template
-      .replace("{date_range}", dateRange)
-      .replace("{date_start}", formatDate(deliveryStart))
-      .replace("{date_end}", formatDate(deliveryEnd));
+    var dateRange = formatDate(deliveryStart) + " - " + formatDate(deliveryEnd);
 
-    msgEl.textContent = message;
+    // ── Express dates from zone data ──
+    var expressStartStr = "";
+    var expressEndStr = "";
+    var zone = matchZone(_s.zones, customerCountry, customerProvince);
+    if (zone && zone.expressEnabled) {
+      var expMin = parseInt(zone.expressDaysMin || "0", 10);
+      var expMax = parseInt(zone.expressDaysMax || "0", 10);
+      if (expMin > 0 && expMax > 0) {
+        var expStart = addBusinessDays(shippedDate, expMin, excludeWeekends, holidays);
+        var expEnd = addBusinessDays(shippedDate, expMax, excludeWeekends, holidays);
+        expressStartStr = formatDate(expStart);
+        expressEndStr = formatDate(expEnd);
+      }
+    }
 
-    if (iconEl) {
-      if (iconChar) { iconEl.textContent = iconChar; iconEl.style.display = ""; }
-      else { iconEl.style.display = "none"; }
+    function replaceDates(tpl) {
+      return tpl
+        .replace(/\{date_range\}/g, dateRange)
+        .replace(/\{date_start\}/g, formatDate(deliveryStart))
+        .replace(/\{date_end\}/g, formatDate(deliveryEnd))
+        .replace(/\{express_start\}/g, expressStartStr)
+        .replace(/\{express_end\}/g, expressEndStr);
+    }
+
+    var message = replaceDates(template);
+
+    // ── Sub-message ──
+    var subMessageTemplate = badge ? (badge.subMessage || "") : "Or get it by {express_end} with Express";
+    var subMessageIconName = badge ? (badge.subMessageIcon || "") : "bolt";
+    var subMessageText = subMessageTemplate ? replaceDates(subMessageTemplate) : "";
+
+    // ── Preview mode: no badges configured yet ──
+    var isPreview = !badge;
+
+    // Card style renders rich markup (label + headline w/ highlighted date + subtext);
+    // all other styles render plain text message.
+    if (displayStyle === "card") {
+      var labelText = isPreview ? "This is a preview" : ((badge && badge.badgeText) || (badge && badge.cardLabel) || "Delivery");
+      // Build headline with highlighted date portion
+      var dateText = dateRange;
+      var headlineParts = message.split(dateText);
+      var headlineHtml = headlineParts.length === 2
+        ? headlineParts[0] + '<span class="arrively-card-date">' + dateText + '</span>' + headlineParts[1]
+        : message;
+
+      var subHtml = "";
+      if (subMessageText) {
+        var subIconColor = isPreview ? "#6b7280" : (textColor + "99");
+        var subIconHtml = subMessageIconName ? iconSvg(subMessageIconName, 12, subIconColor) : "";
+        subHtml = '<span class="arrively-card-subtext">' +
+          (subIconHtml ? '<span style="vertical-align:middle;margin-right:4px;display:inline-block">' + subIconHtml + '</span>' : '') +
+          subMessageText + '</span>';
+      }
+
+      // Build icon HTML for inline use (icon sits next to headline, NOT next to label)
+      var cardIconHtml = "";
+      if (iconName && ICON_SVGS[iconName]) {
+        cardIconHtml = '<span class="arrively-card-icon">' + iconSvg(iconName, 22, accentColor) + '</span>';
+      }
+
+      msgEl.innerHTML =
+        '<span class="arrively-card-label">' + labelText + '</span>' +
+        '<span class="arrively-card-body">' +
+          cardIconHtml +
+          '<span class="arrively-card-text">' +
+            '<span class="arrively-card-headline">' + headlineHtml + '</span>' +
+            subHtml +
+          '</span>' +
+        '</span>';
+
+      // Hide the old outer icon element for card style
+      if (iconEl) { iconEl.style.display = "none"; }
+    } else {
+      // Simple / outlined / filled / pill / minimal styles
+      var mainHtml = "";
+      if (iconName && ICON_SVGS[iconName]) {
+        mainHtml += '<span style="display:inline-flex;vertical-align:middle;margin-right:4px">' + iconSvg(iconName, 14, "currentColor") + '</span>';
+      }
+      mainHtml += '<span>' + message + '</span>';
+
+      if (subMessageText) {
+        var subIc = subMessageIconName ? '<span style="display:inline-flex;vertical-align:middle;margin-right:3px">' + iconSvg(subMessageIconName, 11, "currentColor") + '</span>' : '';
+        mainHtml += '<br><span class="arrively-sub-message">' + subIc + subMessageText + '</span>';
+      }
+
+      msgEl.innerHTML = mainHtml;
+
+      if (iconEl) { iconEl.style.display = "none"; }
     }
 
     widget.style.setProperty("--arrively-accent", accentColor);
-    widget.className = "arrively-widget arrively-style-" + displayStyle;
+    var alignClass = config.textAlign && config.textAlign !== "left" ? " arrively-align-" + config.textAlign : " arrively-align-left";
+    widget.className = "arrively-widget arrively-style-" + displayStyle + (isPreview ? " arrively-preview" : "") + alignClass;
     widget.style.display = "";
   }
 
@@ -496,7 +624,7 @@
     if (manualSel) {
       try {
         const target = document.querySelector(manualSel);
-        if (target && target.parentNode) { target.parentNode.insertBefore(widget, target); return; }
+        if (target && target.parentNode) { target.parentNode.insertBefore(widget, target); return true; }
       } catch (_e) {}
     }
 
@@ -521,8 +649,12 @@
 
     for (const sel of insertionSelectors) {
       const target = document.querySelector(sel);
-      if (target && target.parentNode) { target.parentNode.insertBefore(widget, target); return; }
+      if (target && target.parentNode) { target.parentNode.insertBefore(widget, target); return true; }
     }
+
+    // Fallback: couldn't find a placement target (e.g. in theme editor).
+    // Just leave the widget where it is - it'll render in place.
+    return false;
   }
 
   // ─── Bootstrap ───────────────────────────────────────────────────────────
@@ -533,12 +665,16 @@
 
     placeWidget(widget);
 
-    try { _s.config = JSON.parse(widget.dataset.config || "{}"); } catch { _s.config = {}; }
-    try { _s.rules = JSON.parse(widget.dataset.rules || "[]"); } catch { _s.rules = []; }
+    try { _s.config = JSON.parse(widget.dataset.config || "{}") || {}; } catch(e) { _s.config = {}; }
+    try { _s.rules = JSON.parse(widget.dataset.rules || "[]") || []; } catch(e) { _s.rules = []; }
     try {
-      const raw = widget.dataset.badges;
-      _s.badges = raw ? JSON.parse(raw) : [];
-    } catch { _s.badges = []; }
+      var badgesRaw = widget.dataset.badges;
+      _s.badges = badgesRaw ? JSON.parse(badgesRaw) : [];
+    } catch(e) { _s.badges = []; }
+    try {
+      var zonesRaw = widget.dataset.zones;
+      _s.zones = zonesRaw ? JSON.parse(zonesRaw) : [];
+    } catch(e) { _s.zones = []; }
 
     _s.productId = widget.dataset.productId;
 
@@ -606,9 +742,28 @@
     }
   }
 
+  function tryInit() {
+    if (document.getElementById(WIDGET_ID)) {
+      init();
+    } else {
+      // Theme editor injects app embed HTML dynamically after DOMContentLoaded.
+      // Poll briefly so the widget shows in the dirty/unsaved state.
+      var attempts = 0;
+      var poll = setInterval(function() {
+        attempts++;
+        if (document.getElementById(WIDGET_ID)) {
+          clearInterval(poll);
+          init();
+        } else if (attempts > 50) { // give up after ~5 seconds
+          clearInterval(poll);
+        }
+      }, 100);
+    }
+  }
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", tryInit);
   } else {
-    init();
+    tryInit();
   }
 })();
