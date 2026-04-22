@@ -459,6 +459,30 @@
     }
 
     widget.style.setProperty("--arrively-accent", accentColor);
+
+    var bgColor = (badge && badge.backgroundColor) || "";
+    var isBgTransparent = !!(badge && badge.simpleBgTransparent);
+    var borderColor = (badge && badge.simpleBorderColor) || "";
+    var simpleRounding = (badge && badge.simpleRounding) || "rounded";
+    var configuredTextColor = (badge && badge.textColor) || "";
+
+    var innerEl = widget.querySelector(".arrively-inner");
+    if (innerEl) {
+      if (displayStyle === "simple") {
+        var radiusMap = { none: "0", rounded: "8px", pill: "999px" };
+        var borderRadius = radiusMap[simpleRounding] || "8px";
+        var needsBox = !isBgTransparent || !!borderColor;
+        innerEl.style.color = configuredTextColor || "#1a1a1a";
+        innerEl.style.backgroundColor = isBgTransparent ? "transparent" : (bgColor || "transparent");
+        innerEl.style.border = borderColor ? "1.5px solid " + borderColor : "none";
+        innerEl.style.borderRadius = borderRadius;
+        innerEl.style.padding = needsBox ? (simpleRounding === "pill" ? "7px 18px" : "8px 14px") : "0";
+      } else if (displayStyle === "card") {
+        innerEl.style.backgroundColor = bgColor || "";
+        innerEl.style.color = configuredTextColor || "";
+      }
+    }
+
     var alignClass = config.textAlign && config.textAlign !== "left" ? " arrively-align-" + config.textAlign : " arrively-align-left";
     widget.className = "arrively-widget arrively-style-" + displayStyle + (isPreview ? " arrively-preview" : "") + alignClass;
     widget.style.display = "";
