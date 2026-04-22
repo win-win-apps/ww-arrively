@@ -1,0 +1,36 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "50d24c28388da4712f8c9e5618af4095"
+name = "Arrively"
+application_url = "https://win-win-arrively.fly.dev/app"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = false
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks"
+
+[webhooks.privacy_compliance]
+customer_deletion_url = "/webhooks/customers/redact"
+customer_data_request_url = "/webhooks/customers/data-request"
+shop_deletion_url = "/webhooks/shop/redact"
+
+[access_scopes]
+scopes = "read_products,write_products,read_themes,write_themes,read_shipping"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://win-win-arrively.fly.dev/auth/callback",
+  "https://win-win-arrively.fly.dev/auth/shopify/callback",
+  "https://win-win-arrively.fly.dev/shopify/auth/callback"
+]
+
+[pos]
+embedded = false

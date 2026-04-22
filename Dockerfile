@@ -1,21 +1,36 @@
-FROM node:18-alpine
+FROM node:22-alpine AS base
+# Prisma needs openssl on Alpine — it's not included in node:22-alpine by default
+# and the query engine fails to load without it.
 RUN apk add --no-cache openssl
-
-EXPOSE 3000
-
 WORKDIR /app
 
-ENV NODE_ENV=production
+# Install dependencies
+FROM base AS deps
+COPY package*.json ./
+COPY extensions/arrively-edd/package.json ./extensions/arrively-edd/
+RUN npm ci
 
-COPY package.json package-lock.json* ./
+# Generate Prisma client
+FROM deps AS prisma
+COPY prisma ./prisma/
+RUN npx prisma generate
 
-RUN npm ci --omit=dev && npm cache clean --force
-# Remove CLI packages since we don't need them in production by default.
-# Remove this line if you want to run CLI commands in your container.
-RUN npm remove @shopify/cli
-
+# Build the app
+FROM prisma AS builder
 COPY . .
-
 RUN npm run build
+
+# Production image
+FROM base AS runner
+ENV NODE_ENV=production
+ENV PORT=3000
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/build ./build
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/package.json ./package.json
+
+EXPOSE 3000
 
 CMD ["npm", "run", "docker-start"]

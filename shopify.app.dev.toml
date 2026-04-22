@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "50d24c28388da4712f8c9e5618af4095"
-name = "Arrively"
+client_id = "2db6bbbdf7c78bfe7c6ab3b3f08f56a7"
+name = "Arrively (Dev)"
 application_url = "https://exclusion-successful-october-eye.trycloudflare.com/app"
 embedded = true
 

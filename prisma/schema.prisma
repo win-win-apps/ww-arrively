@@ -2,7 +2,8 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 // Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
@@ -11,17 +12,18 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["winwin_arrively"]
 }
 
 model Session {
   id                  String    @id
-  shop                String
+  shop                String    @unique
   state               String
   isOnline            Boolean   @default(false)
   scope               String?
   expires             DateTime?
   accessToken         String
-  userId              BigInt?
+  userId              Int?
   firstName           String?
   lastName            String?
   email               String?
@@ -31,4 +33,6 @@ model Session {
   emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+
+  @@schema("winwin_arrively")
 }

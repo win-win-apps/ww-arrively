@@ -1,0 +1,23 @@
+app = 'win-win-arrively'
+primary_region = 'yyz'
+
+[build]
+
+[env]
+  PORT = '3000'
+  SCOPES = 'read_products,write_products,read_themes,write_themes,read_shipping'
+  SHOPIFY_API_KEY = '50d24c28388da4712f8c9e5618af4095'
+  SHOPIFY_APP_URL = 'https://win-win-arrively.fly.dev'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
