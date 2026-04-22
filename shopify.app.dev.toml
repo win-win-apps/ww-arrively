@@ -14,12 +14,12 @@ api_version = "2026-04"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "/webhooks"
+  uri = "https://exclusion-successful-october-eye.trycloudflare.com/webhooks/app/uninstalled"
 
 [webhooks.privacy_compliance]
-customer_deletion_url = "/webhooks/customers/redact"
-customer_data_request_url = "/webhooks/customers/data-request"
-shop_deletion_url = "/webhooks/shop/redact"
+customer_deletion_url = "https://exclusion-successful-october-eye.trycloudflare.com/webhooks/customers/redact"
+customer_data_request_url = "https://exclusion-successful-october-eye.trycloudflare.com/webhooks/customers/data_request"
+shop_deletion_url = "https://exclusion-successful-october-eye.trycloudflare.com/webhooks/shop/redact"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
